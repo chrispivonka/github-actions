@@ -1,0 +1,35 @@
+# Example caller for reusable-codeql.yml.
+# Copy into your repo as .github/workflows/codeql.yml and adjust `languages`.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "30 4 * * 1" # weekly, Monday 04:30 UTC
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+# Cancel a superseded run on the same PR/branch, but never cancel a run already in
+# flight on main (including the scheduled scan) — see comparison.md for why this is
+# a convergent Google/GitLab pattern.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  codeql:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-codeql.yml@main
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    with:
+      # Include "actions" to also scan your workflow files (an apple/pkl pattern).
+      languages: '["javascript-typescript", "actions"]'

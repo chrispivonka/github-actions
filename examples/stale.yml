@@ -1,0 +1,22 @@
+# Example caller for reusable-stale.yml.
+# Copy into your repo as .github/workflows/stale.yml.
+
+name: Stale housekeeping
+
+on:
+  schedule:
+    - cron: "15 20 * * *" # daily, 20:15 UTC
+  workflow_dispatch: {} # manual escape hatch, as seen in google/flatbuffers
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-stale.yml@main
+    permissions:
+      issues: write
+      pull-requests: write
+    with:
+      days-before-stale: 90
+      days-before-close: 14

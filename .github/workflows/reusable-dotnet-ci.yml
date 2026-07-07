@@ -1,0 +1,96 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable .NET/C# CI workflow: restore, format check, build, test, across a
+# version matrix.
+#
+# No .NET-heavy repos appeared in the Apple/Google samples surveyed (both orgs skew
+# Swift/Java/C++/Go/Python), so this workflow adapts the same staging pattern used
+# by the other per-language workflows in this repo (lint/format gate, then build,
+# then test) to the standard `dotnet` CLI toolchain rather than citing an org
+# example directly. See docs/research/ for the underlying cross-org pattern.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/dotnet-ci.yml
+
+name: .NET CI
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-versions:
+        description: JSON array of .NET SDK versions to test, e.g. '["8.0.x", "9.0.x"]'.
+        required: false
+        type: string
+        default: '["9.0.x"]'
+      os:
+        description: JSON array of runner images.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        description: Directory containing the solution/project file.
+        required: false
+        type: string
+        default: "."
+      run-format:
+        description: Run `dotnet format --verify-no-changes`.
+        required: false
+        type: boolean
+        default: true
+      run-test:
+        description: Run `dotnet test`.
+        required: false
+        type: boolean
+        default: true
+      configuration:
+        description: Build configuration.
+        required: false
+        type: string
+        default: Release
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: .NET ${{ matrix.dotnet-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet-version: ${{ fromJSON(inputs.dotnet-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Format check
+        if: inputs.run-format
+        run: dotnet format --verify-no-changes
+
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ inputs.configuration }}
+
+      - name: Test
+        if: inputs.run-test
+        run: dotnet test --no-build --configuration ${{ inputs.configuration }}

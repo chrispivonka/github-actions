@@ -1,0 +1,68 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable dependency-review workflow: fails PRs that introduce dependencies with
+# known vulnerabilities or disallowed licenses.
+#
+# Informed by google/libphonenumber (dependency-review.yml — runs on every
+# pull_request) and GitHub's dependency-review-action starter template.
+# See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#     pull-requests: write   # only if comment-summary-in-pr is enabled
+#
+# Caller trigger must be pull_request (the action diffs the PR's dependency graph).
+# Example caller: examples/dependency-review.yml
+
+name: Dependency review
+
+on:
+  workflow_call:
+    inputs:
+      fail-on-severity:
+        description: "Minimum severity that fails the check: low, moderate, high, critical."
+        required: false
+        type: string
+        default: high
+      allow-licenses:
+        description: Comma-separated SPDX license allowlist (mutually exclusive with deny-licenses).
+        required: false
+        type: string
+        default: ""
+      deny-licenses:
+        description: Comma-separated SPDX license denylist.
+        required: false
+        type: string
+        default: ""
+      comment-summary-in-pr:
+        description: "Post a summary comment on the PR: always, on-failure, or never."
+        required: false
+        type: string
+        default: on-failure
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}
+          allow-licenses: ${{ inputs.allow-licenses }}
+          deny-licenses: ${{ inputs.deny-licenses }}
+          comment-summary-in-pr: ${{ inputs.comment-summary-in-pr }}

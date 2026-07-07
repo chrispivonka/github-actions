@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research — github-actions</title>
+<meta name="description" content="How Apple, Google, and GitLab structure CI/CD across their repositories — the research behind this workflow library.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <span class="brand"><a href="index.html" style="color:inherit;text-decoration:none;">github-actions</a></span>
+  <span class="tagline">reusable workflow library</span>
+
+  <h4>This page</h4>
+  <ul>
+    <li><a href="#apple">Apple</a></li>
+    <li><a href="#google">Google</a></li>
+    <li><a href="#gitlab">GitLab</a></li>
+    <li><a href="#comparison">Cross-org comparison</a></li>
+  </ul>
+
+  <h4>Elsewhere</h4>
+  <ul>
+    <li><a href="index.html">Workflow catalog</a></li>
+    <li><a href="https://github.com/chrispivonka/github-actions" target="_blank" rel="noopener">Source on GitHub</a></li>
+  </ul>
+</nav>
+
+<main>
+  <section class="hero" id="research-top">
+    <h1>The research behind this library</h1>
+    <p class="lead">
+      Every design choice in this library — SHA-pinning, permission scoping, which workflows
+      count as "core" — traces back to patterns observed by sampling public repositories from
+      three organizations. Full writeups with per-repo, per-file citations live in
+      <code>docs/research/</code> in the repo; this page is the condensed version.
+    </p>
+  </section>
+
+  <section id="apple">
+    <h2>Apple</h2>
+    <p class="meta">Sampled ~45 of Apple's most-starred/active public repos via the GitHub API;
+      57 workflow files read in full. Full writeup:
+      <a href="https://github.com/chrispivonka/github-actions/blob/main/docs/research/apple.md" target="_blank" rel="noopener">docs/research/apple.md</a>.</p>
+
+    <h3>Three tiers</h3>
+    <ul>
+      <li><strong>The Swift library ecosystem</strong> (~20 repos) — heavy, standardized Actions
+        usage built on two reusable-workflow hubs: <code>swiftlang/github-workflows</code> and,
+        notably, <code>apple/swift-nio</code> itself acting as a second central CI repo consumed
+        by ~10 sibling repos via <code>workflow_call</code>.</li>
+      <li><strong>Product/platform repos</strong> (container, containerization, pkl,
+        servicetalk, foundationdb) — bespoke pipelines, several on self-hosted macOS runners.</li>
+      <li><strong>ML research repos</strong> (<code>ml-*</code>) — zero CI. Code drops, not
+        maintained-with-CI projects.</li>
+    </ul>
+
+    <h3>What Apple treats as core</h3>
+    <p>The <strong>soundness gate</strong> — license headers, formatting, docs-build,
+      API-stability, language hygiene, all bundled in <code>swiftlang/github-workflows</code>'
+      <code>soundness.yml</code> — is the single most consistently applied CI element across
+      Swift repos. Also core: cross-platform build/test matrices spanning Linux distros, Windows,
+      every Apple platform, Static-musl SDK, WebAssembly, Android, and even FreeBSD; and
+      least-privilege permissions + SHA pinning wherever third-party actions are used.</p>
+
+    <h3>What's supplementary</h3>
+    <p>Security scanning (CodeQL only where individual teams — pkl, servicetalk — chose it; no
+      Scorecard found anywhere in the sample), benchmarking (swift-nio/swift-log only), stale
+      bots (foundationdb/axlearn only), and release automation (per-team styles). And CI itself:
+      the entire <code>ml-*</code> catalog ships with none.</p>
+  </section>
+
+  <section id="google">
+    <h2>Google</h2>
+    <p class="meta">Sampled 38 of Google's most-starred/active public repos; 66 workflow files
+      read in full, plus org-wide code-search counts. Full writeup:
+      <a href="https://github.com/chrispivonka/github-actions/blob/main/docs/research/google.md" target="_blank" rel="noopener">docs/research/google.md</a>.</p>
+
+    <h3>The security layer is the story</h3>
+    <p>GitHub Actions is the default public CI for actively maintained Google OSS (34/38
+      sampled repos), but internal CI still coexists visibly — Kokoro paths in ~350 files
+      org-wide, gvisor's real pipeline is BuildKite, skia is a LUCI/Gerrit mirror. What's
+      remarkably uniform is the security tooling: OpenSSF Scorecard (39 files), CodeQL (41),
+      step-security harden-runner (64), zizmor (15), SLSA provenance (6) — plus a distinctive
+      org-level semgrep scan of workflow files themselves in <code>google/.github</code>.</p>
+
+    <h3>SHA-pinning is scorecard-driven, not org-mandated</h3>
+    <p>Repos that adopted Scorecard SHA-pin everything with a version comment and justify every
+      <code>permissions:</code> line in a comment; repos without Scorecard happily use
+      <code>@v4</code>. This library adopts the Scorecard-adopter style as its default across the
+      board, rather than making it conditional.</p>
+
+    <h3>Dogfooding, everywhere</h3>
+    <p><code>osv-scanner</code> scans Google's own repos via its own published reusable workflow;
+      <code>oss-fuzz</code> fuzzes its own infra with ClusterFuzzLite;
+      <code>adk-python</code> triages its own PRs/issues/discussions with Gemini-powered ADK
+      agents on a 6-hour cron. This library's own <code>self-check.yml</code>
+      (running <code>reusable-zizmor.yml</code> against this repo's own workflows) follows the
+      same instinct.</p>
+  </section>
+
+  <section id="gitlab">
+    <h2>GitLab</h2>
+    <p class="meta">Studied the live <code>.gitlab-ci.yml</code> tree of <code>gitlab-org/gitlab</code>
+      (the monolith — ~4,400 lines of CI config) plus 8 satellite projects, via the public
+      GitLab API. Full writeup:
+      <a href="https://github.com/chrispivonka/github-actions/blob/main/docs/research/gitlab.md" target="_blank" rel="noopener">docs/research/gitlab.md</a>.</p>
+
+    <h3>A three-tiered reuse model</h3>
+    <p>GitLab's equivalent of a reusable-workflow library is three-tiered: plain
+      <code>include:</code> of local/remote/project files; <code>Jobs/*.gitlab-ci.yml</code>
+      CI/CD templates shipped inside the <code>gitlab</code> codebase itself (Auto DevOps,
+      SAST, Dependency-Scanning); and the newer <strong>CI/CD Components Catalog</strong> —
+      semver-versioned, input-parameterized building blocks. Every satellite project studied
+      consumes the same <code>danger-review@2.1.0</code> component and the same
+      <code>Jobs/SAST</code>/<code>Jobs/Dependency-Scanning</code>/<code>Jobs/Secret-Detection</code>
+      templates — a genuinely enforced org-wide standard, not just convention.</p>
+
+    <h3>Predictive, tiered testing — the most sophisticated pattern found anywhere</h3>
+    <p>GitLab computes a changed-files → matching-tests mapping (Crystalball dynamic
+      mappings, now supplemented by AI-based test selection via its own Duo product), runs a
+      fail-fast subset first, and scales test scope to how many approvals an MR already has
+      (tier-1/2/3). None of this has a clean GitHub Actions equivalent — flagged in the
+      research as a real capability gap, not something this library attempts to replicate.</p>
+
+    <h3>Security scanning is the most mature of the three orgs studied</h3>
+    <p>SAST/DAST/Dependency-Scanning/Secret-Detection are one-line <code>include: template:</code>
+      references, toggled by CI variables, and mandated org-wide — stronger than Google's
+      broad-but-voluntary adoption and considerably stronger than Apple's sparse, per-team
+      opt-in.</p>
+  </section>
+
+  <section id="comparison">
+    <h2>Cross-org comparison</h2>
+    <p class="meta">Full writeup:
+      <a href="https://github.com/chrispivonka/github-actions/blob/main/docs/research/comparison.md" target="_blank" rel="noopener">docs/research/comparison.md</a>.</p>
+    <p>Seven practices where all three organizations independently converge — the strongest
+      signal available that a practice belongs in this library's core tier:</p>
+    <ol>
+      <li><strong>Least-privilege permissions by default</strong>, escalated only per-job.</li>
+      <li><strong>Reusable-workflow centralization</strong> over copy-paste — Apple's
+        <code>swiftlang/github-workflows</code> hub, Google's published
+        <code>osv-scanner-action</code>, GitLab's Components Catalog.</li>
+      <li><strong>Cancel superseded runs, never the mainline</strong> — concurrency groups
+        with an explicit protected-branch exception.</li>
+      <li><strong>Fork-safety guards</strong> on anything secret-bearing.</li>
+      <li><strong>A human/process checkpoint before shipping</strong> — draft releases,
+        release PRs, merge-train gates.</li>
+      <li><strong>Security scanning as a toggle-able template</strong>, not a hand-rolled
+        script.</li>
+      <li><strong>Dogfooding your own tooling in your own CI.</strong></li>
+    </ol>
+    <p>Where they diverge: SHA-pinning is a GitHub-Actions-specific supply-chain concern with
+      no real GitLab analog (GitLab's <code>include:</code> mechanism rarely reaches outside
+      GitLab-run infrastructure); GitLab's predictive/tiered test selection has no GHA-native
+      equivalent; and each org places its <em>heaviest</em> CI somewhere different (Apple:
+      product maturity gates whether CI exists at all; Google: internal infra like BuildKite/
+      LUCI/Kokoro handles the most demanding projects; GitLab: there's no internal-only shadow
+      system, because GitLab CI/CD is the thing being dogfooded). See the full comparison for
+      what each divergence implies for this library's defaults.</p>
+  </section>
+
+  <footer>
+    Source: <a href="https://github.com/chrispivonka/github-actions" target="_blank" rel="noopener">github.com/chrispivonka/github-actions</a> ·
+    Licensed under <a href="https://github.com/chrispivonka/github-actions/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0</a>
+  </footer>
+</main>
+</div>
+</body>
+</html>

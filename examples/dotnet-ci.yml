@@ -1,0 +1,29 @@
+# Example caller for reusable-dotnet-ci.yml.
+# Copy into your repo as .github/workflows/ci.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Cancel a superseded run on the same PR/branch, but never cancel a run already in
+# flight on main — the pattern converged on by Google (dagger/ci.yml) and GitLab
+# (interruptible: true default + auto_cancel: on_new_commit: none for mainline).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-dotnet-ci.yml@main
+    permissions:
+      contents: read
+    with:
+      dotnet-versions: '["8.0.x", "9.0.x"]'
+      os: '["ubuntu-latest"]'

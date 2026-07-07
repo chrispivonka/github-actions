@@ -1,0 +1,44 @@
+# Example caller for reusable-github-release.yml.
+# Copy into your repo as .github/workflows/release.yml.
+# Build your artifacts in a job first, then hand off via actions/upload-artifact
+# and reference that artifact name here.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+# Group by tag, not branch — never cancel a release build for the tag it's
+# building, but a re-push of the same tag queues rather than races.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - run: echo "build artifacts into dist/" && mkdir -p dist && touch dist/example.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifacts
+          path: dist/*
+
+  release:
+    needs: build
+    uses: chrispivonka/github-actions/.github/workflows/reusable-github-release.yml@main
+    permissions:
+      contents: write
+    with:
+      artifact-name: release-artifacts
+      files: "*.tar.gz"
+      draft: true

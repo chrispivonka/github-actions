@@ -1,0 +1,38 @@
+# Example caller for reusable-release-please.yml.
+# Copy into your repo as .github/workflows/release-please.yml.
+# Chain a publish job on `release-created` to push to npm/PyPI/crates/etc.
+
+name: Release please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Push-to-main, not PR — queue overlapping runs rather than cancel them (GitLab's
+# auto_cancel: on_new_commit: none idea, applied to a job that must never be torn
+# down mid-release).
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-release-please.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      release-type: node
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - run: echo "Publish artifacts for ${{ needs.release-please.outputs.tag-name }}"

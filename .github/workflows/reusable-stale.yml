@@ -1,0 +1,83 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable stale issue/PR housekeeping workflow.
+#
+# Informed by google/flatbuffers (stale.yml — 6-month stale window, exempt label,
+# operations-per-run: 500), google/gvisor, google/cadvisor, and apple/foundationdb
+# (stale.yml — PR-only staleness with issues effectively disabled).
+# See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     issues: write
+#     pull-requests: write
+#
+# Recommended caller trigger: daily schedule + workflow_dispatch as a manual escape
+# hatch (a Google convention). Example caller: examples/stale.yml
+
+name: Stale housekeeping
+
+on:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        description: Days of inactivity before marking stale. Use -1 to disable marking.
+        required: false
+        type: number
+        default: 90
+      days-before-close:
+        description: Days after staleness before closing. Use -1 to never close.
+        required: false
+        type: number
+        default: 14
+      exempt-labels:
+        description: Comma-separated labels that exempt an item from staleness.
+        required: false
+        type: string
+        default: "not-stale,pinned,security"
+      stale-issue-message:
+        description: Comment posted when an issue is marked stale.
+        required: false
+        type: string
+        default: >-
+          This issue has been automatically marked as stale because it has not had
+          recent activity. It will be closed if no further activity occurs. Comment
+          or remove the stale label to keep it open.
+      stale-pr-message:
+        description: Comment posted when a PR is marked stale.
+        required: false
+        type: string
+        default: >-
+          This pull request has been automatically marked as stale because it has
+          not had recent activity. It will be closed if no further activity occurs.
+      operations-per-run:
+        description: Maximum API operations per run (rate-limit guard).
+        required: false
+        type: number
+        default: 500
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    name: Mark and close stale items
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Process stale issues and PRs
+        uses: actions/stale@eb5cf3af3ac0a1aa4c9c45633dd1ae542a27a899 # v10.3.0
+        with:
+          days-before-stale: ${{ inputs.days-before-stale }}
+          days-before-close: ${{ inputs.days-before-close }}
+          exempt-issue-labels: ${{ inputs.exempt-labels }}
+          exempt-pr-labels: ${{ inputs.exempt-labels }}
+          stale-issue-message: ${{ inputs.stale-issue-message }}
+          stale-pr-message: ${{ inputs.stale-pr-message }}
+          stale-issue-label: stale
+          stale-pr-label: stale
+          operations-per-run: ${{ inputs.operations-per-run }}

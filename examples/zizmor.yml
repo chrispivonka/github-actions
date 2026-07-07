@@ -1,0 +1,31 @@
+# Example caller for reusable-zizmor.yml.
+# Copy into your repo as .github/workflows/zizmor.yml.
+
+name: zizmor
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**"]
+  pull_request:
+    paths: [".github/workflows/**"]
+
+permissions:
+  contents: read
+
+# Cancel a superseded run on the same PR/branch, but never cancel a run already in
+# flight on main — see comparison.md for why this is a convergent Google/GitLab
+# pattern.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  zizmor:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-zizmor.yml@main
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      min-severity: medium

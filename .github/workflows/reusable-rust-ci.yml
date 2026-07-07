@@ -1,0 +1,100 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Rust CI workflow: fmt check, clippy, test, across a toolchain matrix.
+#
+# Informed by google/comprehensive-rust (build+i18n-check workflow, composite actions
+# stored inside .github/workflows/ for setup-rust-cache) and the crates.io publish
+# pattern seen in the same repo. dtolnay/rust-toolchain + Swatinem/rust-cache is the
+# de facto standard pairing across the Rust OSS ecosystem generally, adopted here for
+# consistency with the fmt/clippy/test staging both orgs apply to other languages.
+# See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/rust-ci.yml
+
+name: Rust CI
+
+on:
+  workflow_call:
+    inputs:
+      toolchains:
+        description: JSON array of toolchains to test, e.g. '["stable", "beta"]'.
+        required: false
+        type: string
+        default: '["stable"]'
+      os:
+        description: JSON array of runner images.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        description: Directory containing Cargo.toml.
+        required: false
+        type: string
+        default: "."
+      run-fmt:
+        description: Run `cargo fmt --check`.
+        required: false
+        type: boolean
+        default: true
+      run-clippy:
+        description: Run `cargo clippy` with warnings denied.
+        required: false
+        type: boolean
+        default: true
+      run-test:
+        description: Run `cargo test`.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Rust ${{ matrix.toolchain }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ${{ fromJSON(inputs.toolchains) }}
+        os: ${{ fromJSON(inputs.os) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: ${{ inputs.working-directory }}
+
+      - name: Format check
+        if: inputs.run-fmt
+        run: cargo fmt --check
+
+      - name: Clippy
+        if: inputs.run-clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        if: inputs.run-test
+        run: cargo test --all-features

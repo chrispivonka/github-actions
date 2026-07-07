@@ -1,0 +1,33 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Self-application: this repo's own workflows are audited by the same zizmor
+# reusable workflow it publishes for consumers. Dogfooding, in the spirit of
+# google/zx and google/osv-scanner running zizmor on themselves.
+
+name: Self-check workflows
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "examples/**"]
+  pull_request:
+    paths: [".github/workflows/**", "examples/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  zizmor:
+    uses: ./.github/workflows/reusable-zizmor.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      path: ".github/workflows"
+      min-severity: medium

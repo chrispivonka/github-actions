@@ -1,0 +1,83 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable release-please workflow: maintains a running "release PR" from
+# conventional-commit history and cuts a tagged GitHub release on merge.
+#
+# Informed by the 2024+ generation of Google repos that standardized on
+# release-please over hand-rolled release scripts: google/dotprompt (9 workflow
+# files), the google/adk-* family, google/gts, google/re2-wasm, google/slo-generator.
+# See docs/research/google.md for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: write
+#     pull-requests: write
+#
+# Caller trigger: push to the default branch. Example caller:
+# examples/release-please.yml
+#
+# Outputs let the caller chain a publish job (npm/PyPI/crates/etc.) only when a
+# release was actually created — see release_created below.
+
+name: Release please
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: >-
+          release-please release type, e.g. node, python, go, rust, simple.
+          See https://github.com/googleapis/release-please#release-types-supported
+        required: true
+        type: string
+      config-file:
+        description: Path to a release-please-config.json (overrides release-type if set).
+        required: false
+        type: string
+        default: ""
+      manifest-file:
+        description: Path to a .release-please-manifest.json.
+        required: false
+        type: string
+        default: ""
+      target-branch:
+        description: Branch release-please should track.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      release-created:
+        description: "'true' if a release was created on this run."
+        value: ${{ jobs.release-please.outputs.release-created }}
+      tag-name:
+        description: The tag name of the created release, if any.
+        value: ${{ jobs.release-please.outputs.tag-name }}
+      upload-url:
+        description: The release's upload URL, if any.
+        value: ${{ jobs.release-please.outputs.upload-url }}
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    name: Release please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+      upload-url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          release-type: ${{ inputs.release-type }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
+          target-branch: ${{ inputs.target-branch }}

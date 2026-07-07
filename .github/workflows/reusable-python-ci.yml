@@ -1,0 +1,101 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Python CI workflow: lint (ruff), test (pytest), across a version matrix.
+# Uses uv for fast, reproducible installs.
+#
+# Informed by google/yapf (ci.yml, pre-commit.yml, pre-commit-autoupdate.yml) and
+# google/magika's python-test-suite.yml, google/langextract's PR-hygiene suite. The
+# lint/format-then-test staging and version-matrix structure mirror apple's
+# soundness-then-matrix pattern (soundness.yml + swift_package_test.yml) translated
+# to Python's toolchain. See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/python-ci.yml
+#
+# Assumes a pyproject.toml consumable by uv/ruff/pytest. Set run-lint/run-test to
+# false to skip a stage if your repo doesn't use ruff or pytest.
+
+name: Python CI
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of Python versions to test, e.g. '["3.11", "3.12", "3.13"]'.
+        required: false
+        type: string
+        default: '["3.12"]'
+      os:
+        description: JSON array of runner images.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        description: Directory containing pyproject.toml.
+        required: false
+        type: string
+        default: "."
+      run-lint:
+        description: Run `ruff check` and `ruff format --check`.
+        required: false
+        type: boolean
+        default: true
+      run-test:
+        description: Run `pytest`.
+        required: false
+        type: boolean
+        default: true
+      test-args:
+        description: Extra arguments passed to pytest.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Lint (ruff check)
+        if: inputs.run-lint
+        run: uv run ruff check .
+
+      - name: Format check (ruff format)
+        if: inputs.run-lint
+        run: uv run ruff format --check .
+
+      - name: Test
+        if: inputs.run-test
+        run: uv run pytest ${{ inputs.test-args }}

@@ -1,0 +1,55 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable PR auto-labeler workflow (path-based labels from .github/labeler.yml).
+#
+# Informed by google/flatbuffers (label.yml — top-level read-only permissions with a
+# job-scoped pull-requests: write grant), google/gvisor, and
+# google/comprehensive-rust. See docs/research/ for citations.
+#
+# SECURITY NOTE: the labeler needs `pull_request_target` to label forked PRs, which
+# runs with base-repo credentials. Google's org-level semgrep policy treats
+# pull_request_target as requiring an explicit exception; this workflow is safe with
+# it ONLY because it never checks out or executes PR code — do not add steps that do.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#     pull-requests: write
+#
+# Caller trigger: pull_request_target (types: [opened, synchronize, reopened]).
+# Example caller: examples/labeler.yml
+
+name: PR labeler
+
+on:
+  workflow_call:
+    inputs:
+      configuration-path:
+        description: Path to the labeler configuration in the caller repo.
+        required: false
+        type: string
+        default: .github/labeler.yml
+      sync-labels:
+        description: Remove labels when matching files are reverted out of the PR.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    name: Apply path-based labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Label PR from changed paths
+        uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213 # v6.1.0
+        with:
+          configuration-path: ${{ inputs.configuration-path }}
+          sync-labels: ${{ inputs.sync-labels }}

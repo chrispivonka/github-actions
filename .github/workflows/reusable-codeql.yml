@@ -1,0 +1,81 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable CodeQL static-analysis workflow.
+#
+# Informed by patterns observed in apple/pkl (codeql.yml — including scanning the
+# `actions` language, i.e. the workflow files themselves), apple/servicetalk
+# (codeql-analysis.yml — job-scoped security-events permission, weekly cron), and
+# google/gson, google/osv-scanner, google/brotli. See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     actions: read
+#     contents: read
+#     security-events: write
+#
+# Recommended caller triggers: pull_request + push to default branch + weekly cron
+# (the schedule catches newly published queries against unchanged code).
+# Example caller: examples/codeql.yml
+
+name: CodeQL
+
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: >-
+          JSON array of CodeQL languages to analyze, e.g. '["go", "actions"]'.
+          Include "actions" to scan the workflow files themselves (a practice
+          observed in apple/pkl).
+        required: true
+        type: string
+      build-mode:
+        description: "Build mode for compiled languages: none, autobuild, or manual."
+        required: false
+        type: string
+        default: none
+      queries:
+        description: "Additional query suites, e.g. security-extended."
+        required: false
+        type: string
+        default: ""
+      runs-on:
+        description: Runner image for the analysis jobs.
+        required: false
+        type: string
+        default: ubuntu-latest
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(inputs.languages) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ inputs.build-mode }}
+          queries: ${{ inputs.queries }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
+        with:
+          category: "/language:${{ matrix.language }}"

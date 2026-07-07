@@ -1,0 +1,106 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Go CI workflow: vet, lint (golangci-lint), test (with race detector and
+# coverage), across a version matrix.
+#
+# Informed by google/go-github (linter.yml — golangci-lint, SHA-pinned) and
+# google/cadvisor's Go × config matrix. The vet-then-lint-then-test staging mirrors
+# apple's soundness-then-test-matrix layering (soundness.yml + swift_package_test.yml)
+# translated to Go's own tools. See docs/research/ for citations.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/go-ci.yml
+
+name: Go CI
+
+on:
+  workflow_call:
+    inputs:
+      go-versions:
+        description: JSON array of Go versions to test, e.g. '["1.23", "1.24"]'.
+        required: false
+        type: string
+        default: '["1.24"]'
+      os:
+        description: JSON array of runner images.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      working-directory:
+        description: Directory containing go.mod.
+        required: false
+        type: string
+        default: "."
+      run-lint:
+        description: Run golangci-lint.
+        required: false
+        type: boolean
+        default: true
+      run-race:
+        description: Run tests with the race detector.
+        required: false
+        type: boolean
+        default: true
+      run-coverage:
+        description: Collect and upload coverage as a build artifact.
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Go ${{ matrix.go-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ${{ fromJSON(inputs.go-versions) }}
+        os: ${{ fromJSON(inputs.os) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Lint
+        if: inputs.run-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Test (race)
+        if: inputs.run-race
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Test (no race)
+        if: ${{ !inputs.run-race }}
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Upload coverage artifact
+        if: inputs.run-coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-go${{ matrix.go-version }}-${{ matrix.os }}
+          path: ${{ inputs.working-directory }}/coverage.out

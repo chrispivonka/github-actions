@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>github-actions — reusable workflow library</title>
+<meta name="description" content="Modular, reusable GitHub Actions workflows distilled from how Apple, Google, and GitLab run CI/CD.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="layout">
+
+<nav class="sidebar">
+  <span class="brand">github-actions</span>
+  <span class="tagline">reusable workflow library</span>
+
+  <h4>Start here</h4>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#quick-start">Quick start</a></li>
+    <li><a href="#conventions">Conventions</a></li>
+  </ul>
+
+  <h4>Core workflows</h4>
+  <ul>
+    <li><a href="#codeql">CodeQL</a></li>
+    <li><a href="#dependency-review">Dependency review</a></li>
+    <li><a href="#scorecard">OpenSSF Scorecard</a></li>
+    <li><a href="#zizmor">zizmor</a></li>
+    <li><a href="#stale">Stale housekeeping</a></li>
+    <li><a href="#labeler">PR labeler</a></li>
+    <li><a href="#release-please">Release please</a></li>
+    <li><a href="#github-release">GitHub release</a></li>
+  </ul>
+
+  <h4>Per-language CI</h4>
+  <ul>
+    <li><a href="#node-ci">Node.js CI</a></li>
+    <li><a href="#python-ci">Python CI</a></li>
+    <li><a href="#go-ci">Go CI</a></li>
+    <li><a href="#rust-ci">Rust CI</a></li>
+    <li><a href="#dotnet-ci">.NET CI</a></li>
+  </ul>
+
+  <h4>Background</h4>
+  <ul>
+    <li><a href="research.html">Research writeups</a></li>
+    <li><a href="https://github.com/chrispivonka/github-actions" target="_blank" rel="noopener">Source on GitHub</a></li>
+    <li><a href="https://github.com/chrispivonka/github-actions/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+  </ul>
+</nav>
+
+<main>
+
+  <section class="hero" id="overview">
+    <h1>A reusable GitHub Actions workflow library</h1>
+    <p class="lead">
+      Built by researching how <a href="https://github.com/apple" target="_blank" rel="noopener">Apple</a>
+      and <a href="https://github.com/google" target="_blank" rel="noopener">Google</a> run CI/CD across
+      their public repositories, and how <a href="https://about.gitlab.com/" target="_blank" rel="noopener">GitLab</a>
+      structures its own pipelines — then distilling what each treats as
+      <span class="badge core">core</span> (near-universal, high-leverage) versus
+      <span class="badge supp">supplementary</span> (valuable, adopted case by case)
+      into ready-to-call <code>workflow_call</code> workflows.
+    </p>
+    <div class="links">
+      <a href="https://github.com/chrispivonka/github-actions" target="_blank" rel="noopener">View source →</a>
+      <a href="research.html">Read the research →</a>
+    </div>
+
+    <div class="callout">
+      Every workflow below is a <strong>reusable workflow</strong>: you don't copy its code into your
+      repo, you <code>uses:</code> it by reference with a short caller file. Copy-paste caller
+      snippets live in <a href="https://github.com/chrispivonka/github-actions/tree/main/examples" target="_blank" rel="noopener"><code>examples/</code></a>.
+    </div>
+  </section>
+
+  <section id="quick-start">
+    <h2>Quick start</h2>
+    <p>Pick a workflow, copy its example caller, adjust the inputs. Every reusable workflow's
+      header comment documents the exact <code>permissions:</code> block the caller must
+      grant — copy it as-is; it's already least-privilege.</p>
+    <pre><code># .github/workflows/ci.yml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-go-ci.yml@main
+    permissions:
+      contents: read
+    with:
+      go-versions: '["1.23", "1.24"]'</code></pre>
+    <p class="toc-jump">Pin <code>@main</code> to a tag or commit SHA once this repo starts cutting
+      releases — the way <code>swift-collections</code> pins
+      <code>swiftlang/github-workflows@0.0.12</code> rather than tracking a branch.</p>
+  </section>
+
+  <section id="conventions">
+    <h2>Design conventions</h2>
+    <p>Every workflow in this library follows the same rules, each traceable to a pattern
+      observed in the research:</p>
+    <table>
+      <thead><tr><th>Convention</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>SHA-pin every third-party <code>uses:</code>, with a <code>#&nbsp;vX.Y.Z</code> comment</td>
+          <td>Correlates almost exactly with which repos run OpenSSF Scorecard in the Apple and Google samples — a compromised or force-pushed tag can't silently change what your CI runs.</td>
+        </tr>
+        <tr>
+          <td>Least-privilege <code>permissions:</code>, top-level + per-job escalation</td>
+          <td>The majority house style across both orgs' sampled workflows.</td>
+        </tr>
+        <tr>
+          <td><code>persist-credentials: false</code> on every checkout</td>
+          <td>Observed extensively in newer workflows from both orgs; the job token shouldn't outlive the job if it doesn't need to push.</td>
+        </tr>
+        <tr>
+          <td>Typed <code>workflow_call</code> inputs for every reasonable override</td>
+          <td>Keeps the library reusable across a caller's actual version matrix / stack, instead of encoding one team's assumptions.</td>
+        </tr>
+        <tr>
+          <td>Reusable-workflow centralization</td>
+          <td>One place maintains the CI logic; consumers are thin callers — the <code>swiftlang/github-workflows</code> + <code>apple/swift-nio</code> pattern, and <code>google/osv-scanner-action</code>, applied to this repo's own structure.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="core-workflows">
+    <h2>Core workflows <span class="badge core">core</span></h2>
+    <p>Language-agnostic, near-universal across actively-maintained repos in the research.
+      Adopt these on nearly every repo.</p>
+
+    <div class="card" id="codeql">
+      <h4>CodeQL <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-codeql.yml</code> · <strong>Modeled on:</strong> apple/pkl, google/gson, google/brotli, google/libphonenumber</div>
+      <p>Static analysis via CodeQL, with results uploaded as SARIF to code scanning. Supports a
+        matrix of languages — including <code>actions</code>, which scans your workflow files
+        themselves for injection and permission issues, a practice observed in apple/pkl.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>languages</code></td><td><em>required</em></td><td>JSON array, e.g. <code>'["go", "actions"]'</code></td></tr>
+          <tr><td><code>build-mode</code></td><td><code>none</code></td><td><code>none</code> / <code>autobuild</code> / <code>manual</code></td></tr>
+          <tr><td><code>queries</code></td><td><code>""</code></td><td>Extra query suite, e.g. <code>security-extended</code></td></tr>
+          <tr><td><code>runs-on</code></td><td><code>ubuntu-latest</code></td><td>Runner image</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>actions: read</code>, <code>contents: read</code>, <code>security-events: write</code></p>
+      <p><strong>Recommended trigger:</strong> <code>pull_request</code> + <code>push</code> to default branch + weekly <code>schedule</code></p>
+    </div>
+
+    <div class="card" id="dependency-review">
+      <h4>Dependency review <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-dependency-review.yml</code> · <strong>Modeled on:</strong> google/libphonenumber</div>
+      <p>Fails a PR when it introduces a dependency with a known vulnerability or a
+        disallowed license, by diffing the PR's dependency graph.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>fail-on-severity</code></td><td><code>high</code></td><td><code>low</code> / <code>moderate</code> / <code>high</code> / <code>critical</code></td></tr>
+          <tr><td><code>allow-licenses</code></td><td><code>""</code></td><td>SPDX allowlist (mutually exclusive with deny)</td></tr>
+          <tr><td><code>deny-licenses</code></td><td><code>""</code></td><td>SPDX denylist</td></tr>
+          <tr><td><code>comment-summary-in-pr</code></td><td><code>on-failure</code></td><td><code>always</code> / <code>on-failure</code> / <code>never</code></td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code>, <code>pull-requests: write</code></p>
+      <p><strong>Required trigger:</strong> <code>pull_request</code> (diffs the PR's dependency graph)</p>
+    </div>
+
+    <div class="card" id="scorecard">
+      <h4>OpenSSF Scorecard <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-scorecard.yml</code> · <strong>Modeled on:</strong> google/guava, google/gson, google/brotli, google/magika — 39 hits in the Google sample</div>
+      <p>The single most consistent security workflow found in the research. Scores your
+        repo's supply-chain security posture, publishes a badge, and uploads SARIF to code
+        scanning.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>publish-results</code></td><td><code>true</code></td><td>Publish to the public Scorecard API/badge (public repos only — set <code>false</code> for private repos)</td></tr>
+          <tr><td><code>results-file</code></td><td><code>results.sarif</code></td><td>SARIF output filename</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>read-all</code></p>
+      <p><strong>Recommended trigger:</strong> <code>branch_protection_rule</code> + weekly <code>schedule</code> + <code>push</code> to default branch</p>
+    </div>
+
+    <div class="card" id="zizmor">
+      <h4>zizmor <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-zizmor.yml</code> · <strong>Modeled on:</strong> google/zx, google/osv-scanner</div>
+      <p>Statically audits your GitHub Actions workflow files themselves — unpinned actions,
+        script injection, excessive permissions. This repo runs it on its own workflows via
+        <code>self-check.yml</code>, the same dogfooding pattern Google applies to zx and
+        osv-scanner.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>path</code></td><td><code>.github/workflows</code></td><td>Path to scan</td></tr>
+          <tr><td><code>min-severity</code></td><td><code>medium</code></td><td><code>unknown</code> / <code>informational</code> / <code>low</code> / <code>medium</code> / <code>high</code></td></tr>
+          <tr><td><code>zizmor-version</code></td><td><code>1.22.0</code></td><td>Pinned version, installed via <code>uvx</code></td></tr>
+          <tr><td><code>upload-sarif</code></td><td><code>true</code></td><td>Upload results to code scanning</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code>, <code>actions: read</code>, <code>security-events: write</code> (if uploading SARIF)</p>
+    </div>
+
+    <div class="card" id="stale">
+      <h4>Stale housekeeping <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-stale.yml</code> · <strong>Modeled on:</strong> google/flatbuffers, apple/foundationdb</div>
+      <p>Marks inactive issues/PRs stale, then closes them after a grace period.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>days-before-stale</code></td><td><code>90</code></td><td>Inactivity window before marking stale (<code>-1</code> disables)</td></tr>
+          <tr><td><code>days-before-close</code></td><td><code>14</code></td><td>Grace period after staleness (<code>-1</code> never closes)</td></tr>
+          <tr><td><code>exempt-labels</code></td><td><code>not-stale,pinned,security</code></td><td>Comma-separated exempt labels</td></tr>
+          <tr><td><code>stale-issue-message</code> / <code>stale-pr-message</code></td><td>generic notice</td><td>Comment posted on staleness</td></tr>
+          <tr><td><code>operations-per-run</code></td><td><code>500</code></td><td>API-call rate-limit guard</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>issues: write</code>, <code>pull-requests: write</code></p>
+      <p><strong>Recommended trigger:</strong> daily <code>schedule</code> + <code>workflow_dispatch</code> as a manual escape hatch</p>
+    </div>
+
+    <div class="card" id="labeler">
+      <h4>PR labeler <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-labeler.yml</code> · <strong>Modeled on:</strong> google/flatbuffers, google/gvisor</div>
+      <p>Applies labels to PRs based on which paths they touch, using a
+        <code>.github/labeler.yml</code> config in the caller repo.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>configuration-path</code></td><td><code>.github/labeler.yml</code></td><td>Path to labeler config in caller repo</td></tr>
+          <tr><td><code>sync-labels</code></td><td><code>true</code></td><td>Remove labels when matching files are reverted out of the PR</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code>, <code>pull-requests: write</code></p>
+      <p><strong>Required trigger:</strong> <code>pull_request_target</code> (needed to label forked PRs)</p>
+      <div class="callout">
+        <strong>Security note:</strong> <code>pull_request_target</code> runs with base-repo
+        credentials. Google's org-level policy treats it as requiring an explicit exception —
+        this workflow is safe with it only because it never checks out or executes PR code.
+        Don't add steps that do.
+      </div>
+    </div>
+
+    <div class="card" id="release-please">
+      <h4>Release please <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-release-please.yml</code> · <strong>Modeled on:</strong> google/dotprompt, the google/adk-* family, google/gts</div>
+      <p>Maintains a running "release PR" from conventional-commit history and cuts a tagged
+        GitHub release on merge. Outputs let you chain a publish job only when a release was
+        actually created.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>release-type</code></td><td><em>required</em></td><td>e.g. <code>node</code>, <code>python</code>, <code>go</code>, <code>rust</code>, <code>simple</code></td></tr>
+          <tr><td><code>config-file</code></td><td><code>""</code></td><td>Path to <code>release-please-config.json</code> (overrides release-type)</td></tr>
+          <tr><td><code>manifest-file</code></td><td><code>""</code></td><td>Path to <code>.release-please-manifest.json</code></td></tr>
+          <tr><td><code>target-branch</code></td><td><code>""</code></td><td>Branch to track</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Outputs:</strong> <code>release-created</code>, <code>tag-name</code>, <code>upload-url</code></p>
+      <p><strong>Required caller permissions:</strong> <code>contents: write</code>, <code>pull-requests: write</code></p>
+      <p><strong>Required trigger:</strong> <code>push</code> to default branch</p>
+    </div>
+
+    <div class="card" id="github-release">
+      <h4>GitHub release <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-github-release.yml</code> · <strong>Modeled on:</strong> apple/container, google/jsonnet</div>
+      <p>Publishes a GitHub Release with build artifacts attached — draft by default, so a
+        human confirms publication, the pattern both Apple and Google favor over releasing
+        automatically on tag push. Doesn't build your artifacts; hand them off via
+        <code>actions/upload-artifact</code> from a prior job.</p>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>files</code></td><td><em>required</em></td><td>Glob(s) of artifact paths to attach</td></tr>
+          <tr><td><code>tag-name</code></td><td><code>""</code></td><td>Defaults to the triggering ref</td></tr>
+          <tr><td><code>draft</code></td><td><code>true</code></td><td>Require manual publish</td></tr>
+          <tr><td><code>prerelease</code></td><td><code>false</code></td><td>Mark as prerelease</td></tr>
+          <tr><td><code>generate-release-notes</code></td><td><code>true</code></td><td>Auto-generate notes from merged PRs</td></tr>
+          <tr><td><code>artifact-name</code></td><td><code>""</code></td><td>If set, downloads this build artifact before publishing</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: write</code></p>
+    </div>
+  </section>
+
+  <section id="lang-ci">
+    <h2>Per-language CI <span class="badge supp">supplementary</span></h2>
+    <p>Adopt whichever matches your stack — don't stack multiple unless the repo is genuinely
+      polyglot (see google/magika's per-language pattern in the research for when that's
+      warranted). Every one of these takes <code>os</code> and its version-axis input as JSON
+      arrays, so you get a full matrix build for free — the same shape as Apple's
+      <code>swift_package_test.yml</code>, scoped to one language per workflow.</p>
+
+    <div class="card" id="node-ci">
+      <h4>Node.js CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-node-ci.yml</code> · <strong>Stages:</strong> install → lint → typecheck → test → build</div>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>node-versions</code></td><td><code>'["22"]'</code></td></tr>
+          <tr><td><code>os</code></td><td><code>'["ubuntu-latest"]'</code></td></tr>
+          <tr><td><code>package-manager</code></td><td><code>npm</code> (or <code>yarn</code> / <code>pnpm</code>)</td></tr>
+          <tr><td><code>working-directory</code></td><td><code>.</code></td></tr>
+          <tr><td><code>run-lint</code> / <code>run-typecheck</code> / <code>run-test</code> / <code>run-build</code></td><td><code>true</code> each — set <code>false</code> to skip a stage your repo doesn't have</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code></p>
+      <p>Assumes <code>lint</code> / <code>typecheck</code> / <code>test</code> / <code>build</code> npm scripts in <code>package.json</code>.</p>
+    </div>
+
+    <div class="card" id="python-ci">
+      <h4>Python CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-python-ci.yml</code> · <strong>Stages:</strong> ruff check → ruff format → pytest, via <code>uv</code></div>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>python-versions</code></td><td><code>'["3.12"]'</code></td></tr>
+          <tr><td><code>os</code></td><td><code>'["ubuntu-latest"]'</code></td></tr>
+          <tr><td><code>working-directory</code></td><td><code>.</code></td></tr>
+          <tr><td><code>run-lint</code> / <code>run-test</code></td><td><code>true</code> each</td></tr>
+          <tr><td><code>test-args</code></td><td><code>""</code> — extra pytest arguments</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code></p>
+      <p>Assumes a <code>pyproject.toml</code> consumable by <code>uv</code>/<code>ruff</code>/<code>pytest</code>.</p>
+    </div>
+
+    <div class="card" id="go-ci">
+      <h4>Go CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-go-ci.yml</code> · <strong>Stages:</strong> vet → golangci-lint → test (race + coverage)</div>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>go-versions</code></td><td><code>'["1.24"]'</code></td></tr>
+          <tr><td><code>os</code></td><td><code>'["ubuntu-latest"]'</code></td></tr>
+          <tr><td><code>working-directory</code></td><td><code>.</code></td></tr>
+          <tr><td><code>run-lint</code></td><td><code>true</code> — golangci-lint</td></tr>
+          <tr><td><code>run-race</code></td><td><code>true</code> — race detector</td></tr>
+          <tr><td><code>run-coverage</code></td><td><code>true</code> — uploads <code>coverage.out</code> as a build artifact</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code></p>
+    </div>
+
+    <div class="card" id="rust-ci">
+      <h4>Rust CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-rust-ci.yml</code> · <strong>Stages:</strong> fmt --check → clippy -D warnings → test</div>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>toolchains</code></td><td><code>'["stable"]'</code></td></tr>
+          <tr><td><code>os</code></td><td><code>'["ubuntu-latest"]'</code></td></tr>
+          <tr><td><code>working-directory</code></td><td><code>.</code></td></tr>
+          <tr><td><code>run-fmt</code> / <code>run-clippy</code> / <code>run-test</code></td><td><code>true</code> each</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code></p>
+      <p>Uses <code>dtolnay/rust-toolchain</code> + <code>Swatinem/rust-cache</code> — the de facto
+        standard pairing across the Rust OSS ecosystem.</p>
+    </div>
+
+    <div class="card" id="dotnet-ci">
+      <h4>.NET CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-dotnet-ci.yml</code> · <strong>Stages:</strong> restore → format check → build → test</div>
+      <table>
+        <thead><tr><th>Input</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>dotnet-versions</code></td><td><code>'["9.0.x"]'</code></td></tr>
+          <tr><td><code>os</code></td><td><code>'["ubuntu-latest"]'</code></td></tr>
+          <tr><td><code>working-directory</code></td><td><code>.</code></td></tr>
+          <tr><td><code>run-format</code> / <code>run-test</code></td><td><code>true</code> each</td></tr>
+          <tr><td><code>configuration</code></td><td><code>Release</code></td></tr>
+        </tbody>
+      </table>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code></p>
+      <div class="callout">
+        No .NET-heavy repos turned up in the Apple/Google research samples (both orgs skew
+        Swift/Java/C++/Go/Python) — this workflow adapts the same staging pattern used by the
+        other language workflows here rather than citing a specific org example.
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Source: <a href="https://github.com/chrispivonka/github-actions" target="_blank" rel="noopener">github.com/chrispivonka/github-actions</a> ·
+    Licensed under <a href="https://github.com/chrispivonka/github-actions/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0</a> ·
+    See <a href="https://github.com/chrispivonka/github-actions/blob/main/NOTICE" target="_blank" rel="noopener">NOTICE</a> for third-party attribution.
+  </footer>
+
+</main>
+</div>
+</body>
+</html>

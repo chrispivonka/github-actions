@@ -1,0 +1,28 @@
+# Example caller for reusable-dependency-review.yml.
+# Copy into your repo as .github/workflows/dependency-review.yml.
+
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# PR-only trigger, so a superseded run on the same PR can always be cancelled —
+# no mainline exception needed here.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-dependency-review.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      fail-on-severity: high
+      deny-licenses: "GPL-2.0,GPL-3.0,AGPL-3.0"

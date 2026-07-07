@@ -1,0 +1,78 @@
+github-actions
+Copyright 2026 Chris Pivonka
+
+This product includes original software licensed under the Apache License,
+Version 2.0 (see LICENSE). No source code from any third-party project is
+vendored or copied into this repository — the reusable workflows in
+`.github/workflows/` are original YAML written by studying and adapting publicly
+observable CI/CD *patterns and conventions*, not by copying files.
+
+================================================================================
+Research sources
+================================================================================
+
+The design patterns in this repo's workflows (SHA-pinning, permissions scoping,
+matrix structure, reusable-workflow architecture, and the specific tool choices
+below) were identified by inspecting the public, MIT/Apache/BSD-licensed
+repositories of the following organizations via the GitHub REST API. No content
+was copied verbatim from any of these repositories; each is cited by name in the
+relevant reusable workflow's header comment and in docs/research/. Full findings
+and per-repo/per-file citations are in docs/research/apple.md,
+docs/research/google.md, and docs/research/gitlab.md.
+
+  - github.com/apple           (Apache License 2.0, per-repo license may vary)
+  - github.com/swiftlang       (Apache License 2.0)
+  - github.com/google          (Apache License 2.0, per-repo license may vary)
+  - gitlab.com/gitlab-org      (MIT Expat License / GitLab EE license, per-project)
+
+Consult each upstream repository's own LICENSE file if you need the license terms
+of the *original* project referenced — this NOTICE only covers this repository's
+own content.
+
+================================================================================
+Third-party GitHub Actions referenced by the reusable workflows in this repo
+================================================================================
+
+This repository's workflows invoke the following third-party GitHub Actions by
+SHA-pinned reference. Each is a separate open-source project with its own license;
+none of their code is vendored here, they are invoked at workflow run time via the
+`uses:` key exactly as any GitHub Actions consumer would. Attribution below is a
+courtesy index of what this library calls; see each project's own repository for
+its authoritative license text.
+
+  actions/checkout                          MIT       github.com/actions/checkout
+  actions/setup-node                        MIT       github.com/actions/setup-node
+  actions/setup-python                      MIT       github.com/actions/setup-python
+  actions/setup-go                          MIT       github.com/actions/setup-go
+  actions/setup-dotnet                      MIT       github.com/actions/setup-dotnet
+  actions/upload-artifact                   MIT       github.com/actions/upload-artifact
+  actions/download-artifact                 MIT       github.com/actions/download-artifact
+  actions/stale                             MIT       github.com/actions/stale
+  actions/labeler                           MIT       github.com/actions/labeler
+  actions/dependency-review-action          MIT       github.com/actions/dependency-review-action
+  actions/configure-pages                   MIT       github.com/actions/configure-pages
+  actions/upload-pages-artifact              MIT       github.com/actions/upload-pages-artifact
+  actions/deploy-pages                      MIT       github.com/actions/deploy-pages
+  github/codeql-action                      MIT       github.com/github/codeql-action
+  dtolnay/rust-toolchain                    MIT/Apache-2.0  github.com/dtolnay/rust-toolchain
+  Swatinem/rust-cache                       MIT       github.com/Swatinem/rust-cache
+  golangci/golangci-lint-action             GPL-3.0 (action code, not your Go code) github.com/golangci/golangci-lint-action
+  astral-sh/setup-uv                        MIT/Apache-2.0  github.com/astral-sh/setup-uv
+  ossf/scorecard-action                     Apache-2.0  github.com/ossf/scorecard-action
+  googleapis/release-please-action          Apache-2.0  github.com/googleapis/release-please-action
+  softprops/action-gh-release               MIT       github.com/softprops/action-gh-release
+
+zizmor (invoked via `uvx` in reusable-zizmor.yml, not a GitHub Action):
+  zizmor                                    MIT       github.com/woodruffw/zizmor
+
+================================================================================
+A note on SHA pins
+================================================================================
+
+Every third-party action above is pinned to a full 40-character commit SHA with a
+trailing `# vX.Y.Z` comment in the workflow files, rather than a mutable tag. This
+mirrors the practice observed most consistently among Scorecard-adopting repos in
+the Google sample (docs/research/google.md) and is intended to prevent a
+compromised or force-pushed tag from silently changing what code your CI runs.
+When bumping a pin, re-resolve the tag to its current commit SHA rather than
+trusting a cached value — tags are not immutable on GitHub.

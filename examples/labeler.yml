@@ -1,0 +1,23 @@
+# Example caller for reusable-labeler.yml.
+# Copy into your repo as .github/workflows/labeler.yml, and add
+# .github/labeler.yml with your path-to-label rules.
+#
+# Uses pull_request_target so forked PRs get labeled too (base-repo credentials —
+# see the SECURITY NOTE in reusable-labeler.yml before adding steps here).
+
+name: PR labeler
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-labeler.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
