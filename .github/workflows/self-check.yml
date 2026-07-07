@@ -4,15 +4,21 @@
 # Self-application: this repo's own workflows are audited by the same zizmor
 # reusable workflow it publishes for consumers. Dogfooding, in the spirit of
 # google/zx and google/osv-scanner running zizmor on themselves.
+#
+# Scoped to .github/workflows only: those are the only files GitHub Actions ever
+# auto-discovers and executes in this repo, so they're the only real attack
+# surface. Files under examples/ are inert reference snippets, never executed
+# here — and zizmor's CLI doesn't reliably support scanning two directories in
+# one invocation (see reusable-zizmor.yml's `path` input for why).
 
 name: Self-check workflows
 
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/**", "examples/**"]
+    paths: [".github/workflows/**"]
   pull_request:
-    paths: [".github/workflows/**", "examples/**"]
+    paths: [".github/workflows/**"]
 
 permissions:
   contents: read
