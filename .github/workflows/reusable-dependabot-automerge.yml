@@ -1,0 +1,91 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable workflow: enables GitHub's native auto-merge on Dependabot PRs.
+#
+# By default this does NOT filter by update type (major/minor/patch) or require
+# manual approval — it enables auto-merge unconditionally for any Dependabot PR,
+# and relies entirely on required status checks in branch protection to gate the
+# actual merge. That's a deliberate, more permissive choice than most published
+# "safe Dependabot auto-merge" recipes (which typically restrict to patch/minor
+# only) — set `restrict-to-update-types` if you want that stricter behavior
+# instead.
+#
+# IMPORTANT: "auto-merge" only waits for checks that are configured as REQUIRED
+# in the repo's branch protection rules. If main has no required status checks,
+# enabling auto-merge here will let a Dependabot PR merge immediately, without
+# waiting for CI at all. Configure branch protection with your CI jobs as
+# required checks before relying on this — see this repo's own dependabot-
+# automerge.yml caller and the branch-protection note in its header for the
+# exact check-run names this repo requires.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: write
+#     pull-requests: write
+#
+# Required trigger: `pull_request` (Dependabot PRs are same-repo branches, not
+# forks, so the default GITHUB_TOKEN has normal permissions — no need for
+# pull_request_target). Example caller: examples/dependabot-automerge.yml
+
+name: Dependabot auto-merge
+
+on:
+  workflow_call:
+    inputs:
+      merge-method:
+        description: "One of: squash, merge, rebase."
+        required: false
+        type: string
+        default: squash
+      restrict-to-update-types:
+        description: >-
+          Comma-separated Dependabot update-type filter (e.g.
+          "version-update:semver-patch,version-update:semver-minor"). Empty
+          (the default) means every update type is eligible, including major
+          version bumps.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  automerge:
+    name: Enable auto-merge for Dependabot PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.actor == 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Check update type is allowed
+        id: gate
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          RESTRICT: ${{ inputs.restrict-to-update-types }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RESTRICT" ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          elif echo ",$RESTRICT," | grep -q ",$UPDATE_TYPE,"; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Update type '$UPDATE_TYPE' is not in the allowed list ($RESTRICT) — skipping auto-merge."
+          fi
+
+      - name: Enable auto-merge
+        if: steps.gate.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto "--${{ inputs.merge-method }}" "$PR_URL"

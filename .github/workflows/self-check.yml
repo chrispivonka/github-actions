@@ -1,24 +1,27 @@
 # Copyright 2026 Chris Pivonka
 # SPDX-License-Identifier: Apache-2.0
 #
-# Self-application: this repo's own workflows are audited by the same zizmor
-# reusable workflow it publishes for consumers. Dogfooding, in the spirit of
-# google/zx and google/osv-scanner running zizmor on themselves.
+# Self-application: this repo's own workflows are audited by the same zizmor and
+# actionlint reusable workflows it publishes for consumers. Dogfooding, in the
+# spirit of google/zx and google/osv-scanner running zizmor on themselves.
 #
-# Scoped to .github/workflows only: those are the only files GitHub Actions ever
-# auto-discovers and executes in this repo, so they're the only real attack
-# surface. Files under examples/ are inert reference snippets, never executed
-# here — and zizmor's CLI doesn't reliably support scanning two directories in
-# one invocation (see reusable-zizmor.yml's `path` input for why).
+# zizmor is scoped to .github/workflows only: those are the only files GitHub
+# Actions ever auto-discovers and executes in this repo, so they're the only real
+# security attack surface, and its CLI doesn't reliably support scanning two
+# directories in one invocation (see reusable-zizmor.yml's `path` input for why —
+# this was learned the hard way in this repo's own commit history). actionlint has
+# no such limitation, so it also covers examples/ — those files are inert here,
+# but they're what consumers copy-paste, so a schema/syntax mistake in one is worth
+# catching before it ships.
 
 name: Self-check workflows
 
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/**"]
+    paths: [".github/workflows/**", "examples/**"]
   pull_request:
-    paths: [".github/workflows/**"]
+    paths: [".github/workflows/**", "examples/**"]
 
 permissions:
   contents: read
@@ -37,3 +40,10 @@ jobs:
     with:
       path: ".github/workflows"
       min-severity: medium
+
+  actionlint:
+    uses: ./.github/workflows/reusable-actionlint.yml
+    permissions:
+      contents: read
+    with:
+      files: ".github/workflows/*.yml examples/*.yml"

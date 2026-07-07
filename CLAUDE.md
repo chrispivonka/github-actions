@@ -17,8 +17,11 @@ workflow YAML.
 ## How the repo is organized
 
 ```
-.github/workflows/reusable-*.yml   the library — one workflow_call file per concern
-.github/workflows/self-check.yml   dogfoods reusable-zizmor.yml on this repo's own workflows
+.github/workflows/reusable-*.yml          the library — one workflow_call file per concern
+.github/workflows/self-check.yml          dogfoods reusable-zizmor.yml + reusable-actionlint.yml on this repo's own workflows
+.github/workflows/dependabot-automerge.yml  auto-merges this repo's own Dependabot PRs (see branch-protection note below)
+.github/dependabot.yml                    keeps this repo's own action pins current, grouped into one PR
+.github/ISSUE_TEMPLATE/, PULL_REQUEST_TEMPLATE.md
 examples/*.yml                     copy-paste caller snippets, one per reusable workflow
 docs/research/apple.md             Apple GH Actions research, full citations
 docs/research/google.md            Google GH Actions research, full citations
@@ -27,6 +30,7 @@ docs/research/comparison.md        cross-org synthesis → this library's defaul
 docs/site/                         GitHub Pages docs site source (deployed via a workflow)
 LICENSE                            Apache-2.0
 NOTICE                             attribution for patterns + third-party Actions referenced
+CONTRIBUTING.md                    short-form conventions, points back here
 ```
 
 Each `reusable-*.yml` file's header comment states: which org/repo's pattern
@@ -78,10 +82,28 @@ per-repo table and a "core vs. supplementary" distillation.
 
 ## Things to know before touching workflow files
 
-- **Actionlint/zizmor are not installed locally in this dev environment.**
-  Validation so far has been YAML-parse-level (`python3 -c "import yaml"`) plus
-  manual review — not a full GitHub Actions schema check. If you have zizmor or
-  actionlint available, run them before committing changes to `.github/workflows/`.
+- **`actionlint` is installed locally (via `brew install actionlint`)** — run
+  `actionlint .github/workflows/*.yml examples/*.yml` before pushing any workflow
+  change. `zizmor` is not installed locally (it's only invoked in CI via `uvx`);
+  if you need to test a zizmor-related change, install it locally first
+  (`brew install zizmor` or `uvx zizmor`) rather than pushing blind.
+- **A broken-in-CI incident already happened here**: an earlier change assumed
+  zizmor's CLI supported two positional scan paths in one call the way
+  actionlint does; it doesn't, and it took three follow-up commits to fully
+  revert (see the commit history around `reusable-zizmor.yml` /
+  `self-check.yml`). Don't assume a CLI tool's calling convention — test it
+  locally first, per `CONTRIBUTING.md`.
+- **`dependabot-automerge.yml` depends on branch protection to mean anything.**
+  It's configured (2026-07-07) with `main`'s required status checks set to
+  `zizmor / Audit workflows with zizmor` and
+  `actionlint / Lint workflow YAML with actionlint`, and no required-approval
+  count — that's what makes "auto-merge gated on CI, regardless of approvals"
+  actually true rather than a no-op. If a job in `self-check.yml` is renamed, or
+  the reusable workflows it calls change their `name:`, the required-check
+  strings in branch protection go stale silently (GitHub doesn't warn you) and
+  auto-merge stops waiting on real results. Re-verify with
+  `gh api repos/chrispivonka/github-actions/branches/main/protection` after any
+  such rename.
 - **`examples/*.yml` reference `chrispivonka/github-actions/.github/workflows/...@main`.**
   If this repo is ever forked/renamed, or once it starts cutting tagged releases,
   update the `uses:` refs in every example (and in this file) to match — `@main`

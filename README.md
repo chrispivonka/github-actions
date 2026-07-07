@@ -46,7 +46,26 @@ docs/research/       the research this library is based on
 docs/site/           source for the GitHub Pages documentation site
 LICENSE              Apache-2.0
 NOTICE               attribution for third-party patterns and actions referenced
+CONTRIBUTING.md      conventions for adding/changing a reusable workflow
 ```
+
+## This repo's own automation
+
+This repo dogfoods its own library:
+
+- **`self-check.yml`** runs `reusable-zizmor.yml` and `reusable-actionlint.yml`
+  against this repo's own workflow files on every push/PR — security and
+  correctness checks, respectively.
+- **`dependabot.yml`** keeps every SHA pin under `.github/workflows/` current,
+  grouping all `github-actions`-ecosystem updates into a single PR where
+  possible rather than one PR per action.
+- **`dependabot-automerge.yml`** auto-merges those Dependabot PRs — any update
+  type, no manual approval required — but *only* because main's branch
+  protection marks the `self-check.yml` jobs as required status checks. Auto-merge
+  waits solely on whichever checks are required; without that branch-protection
+  configuration it would merge immediately, before CI even runs. See
+  `reusable-dependabot-automerge.yml`'s header comment before adopting this
+  pattern elsewhere.
 
 ## Quick start
 
@@ -90,10 +109,12 @@ tracking a branch.
 | [`reusable-dependency-review.yml`](.github/workflows/reusable-dependency-review.yml) | Fails PRs introducing vulnerable or disallowed-license dependencies. | google/libphonenumber |
 | [`reusable-scorecard.yml`](.github/workflows/reusable-scorecard.yml) | OpenSSF Scorecard supply-chain security score, badge, and SARIF upload. | google/guava, google/gson, google/brotli, google/magika (39 repos in the Google sample) |
 | [`reusable-zizmor.yml`](.github/workflows/reusable-zizmor.yml) | Statically audits your workflow files themselves for injection/permission/pinning issues. | google/zx, google/osv-scanner |
+| [`reusable-actionlint.yml`](.github/workflows/reusable-actionlint.yml) | Validates workflow YAML schema/syntax/expressions — the correctness checks zizmor doesn't cover. | no org in the research ran it specifically; it's the de facto community-standard workflow linter, and this repo's own CI would have caught a real bug sooner with it |
 | [`reusable-stale.yml`](.github/workflows/reusable-stale.yml) | Marks and closes inactive issues/PRs on a schedule. | google/flatbuffers, apple/foundationdb |
 | [`reusable-labeler.yml`](.github/workflows/reusable-labeler.yml) | Path-based auto-labeling for PRs, including forked PRs. | google/flatbuffers, google/gvisor |
 | [`reusable-release-please.yml`](.github/workflows/reusable-release-please.yml) | Conventional-commit release automation: running release PR → tagged GitHub release. | google/dotprompt, google/adk-python family |
 | [`reusable-github-release.yml`](.github/workflows/reusable-github-release.yml) | Publishes a (draft, by default) GitHub Release with build artifacts attached. | apple/container, google/jsonnet |
+| [`reusable-dependabot-automerge.yml`](.github/workflows/reusable-dependabot-automerge.yml) | Enables auto-merge on Dependabot PRs, gated on required CI checks passing — see the header comment before adopting, since it's a no-op without branch protection. | google's broad Dependabot adoption (109 repos in the sample), generalized into a reusable gate |
 
 ### Per-language CI (adopt the one matching your stack)
 

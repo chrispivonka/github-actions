@@ -61,9 +61,13 @@ its authoritative license text.
   ossf/scorecard-action                     Apache-2.0  github.com/ossf/scorecard-action
   googleapis/release-please-action          Apache-2.0  github.com/googleapis/release-please-action
   softprops/action-gh-release               MIT       github.com/softprops/action-gh-release
+  dependabot/fetch-metadata                 MIT       github.com/dependabot/fetch-metadata
 
-zizmor (invoked via `uvx` in reusable-zizmor.yml, not a GitHub Action):
+zizmor and actionlint (invoked directly in reusable-zizmor.yml /
+reusable-actionlint.yml via `uvx` and a downloaded release binary respectively,
+not GitHub Actions):
   zizmor                                    MIT       github.com/woodruffw/zizmor
+  actionlint                                MIT       github.com/rhysd/actionlint
 
 Note on Swatinem/rust-cache (LGPL-3.0): it is invoked at workflow run time via
 `uses:`, not linked into or distributed with your project's own code, so LGPL-3.0's

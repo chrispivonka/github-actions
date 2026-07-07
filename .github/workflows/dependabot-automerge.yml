@@ -1,0 +1,32 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Enables auto-merge on this repo's own Dependabot PRs (dependabot.yml), for any
+# update type, gated purely on CI passing — no manual approval required.
+#
+# This ONLY works as intended because main's branch protection marks the
+# self-check.yml jobs as required status checks:
+#   - "zizmor / Audit workflows with zizmor"
+#   - "actionlint / Lint workflow YAML with actionlint"
+# and does NOT require any approving review count. If branch protection is ever
+# removed or those check names change (e.g. a job is renamed in self-check.yml or
+# the reusable workflows it calls), auto-merge will stop waiting on real CI
+# results — re-verify and update branch protection's required checks to match.
+
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  automerge:
+    uses: ./.github/workflows/reusable-dependabot-automerge.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      merge-method: squash

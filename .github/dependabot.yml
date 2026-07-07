@@ -1,0 +1,26 @@
+# Keeps this repo's own SHA-pinned actions current — the gap Google's own
+# dependabot.yml (present in 109 repos in the research sample, docs/research/google.md)
+# closes: SHA-pinning without an update mechanism just means stale pins nobody
+# revisits. Dependabot resolves each new release back to its commit SHA itself and
+# opens a version-bump PR with the tag comment updated to match, so this repo never
+# has to manually re-resolve pins the way the rest of the workflows here were
+# authored (gh api .../git/ref/tags/<tag>).
+#
+# Only covers .github/workflows — Dependabot's github-actions ecosystem doesn't
+# scan arbitrary directories like examples/, so those pins still need a manual
+# bump when touched (self-check.yml's actionlint job at least catches if one
+# becomes syntactically invalid, though not if it's simply out of date).
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
+      include: scope

@@ -1,0 +1,26 @@
+name: New reusable workflow proposal
+description: Propose a new core or per-language reusable workflow for the library.
+labels: [enhancement]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Proposed workflow name
+      placeholder: reusable-terraform-ci.yml
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: What does it do, and why does it belong in this library?
+      description: >-
+        Per CONTRIBUTING.md, prefer a concrete pattern observed in
+        docs/research/ (or a clear caller use case) over "an org does this."
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Expected workflow_call inputs
+    validations:
+      required: false

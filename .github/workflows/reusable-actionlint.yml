@@ -1,0 +1,82 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable actionlint workflow: statically validates GitHub Actions workflow YAML
+# — schema errors, shellcheck-style issues in `run:` steps, undefined expression
+# contexts, invalid `needs:`/matrix references — the kind of syntax/schema mistake
+# zizmor (reusable-zizmor.yml) doesn't cover, since zizmor focuses on security
+# rather than correctness.
+#
+# No org in this repo's research (docs/research/) was observed running actionlint
+# specifically, but it's the de facto standard workflow linter in the broader
+# GitHub Actions community, and complements this library's own zizmor workflow:
+# actionlint catches "this workflow is broken," zizmor catches "this workflow is
+# exploitable." This repo's own self-check.yml runs both against its own files.
+#
+# Downloads the official released binary directly and verifies it against the
+# release's published sha256 checksums file, rather than piping an unpinned
+# install script — consistent with this library's SHA-pinning discipline for
+# third-party actions (see NOTICE).
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/actionlint.yml
+
+name: actionlint
+
+on:
+  workflow_call:
+    inputs:
+      files:
+        description: >-
+          Space-separated glob(s) of workflow files to lint. Defaults to every
+          file actionlint auto-discovers under .github/workflows; pass an
+          explicit glob to lint files elsewhere (e.g. template/example callers)
+          too.
+        required: false
+        type: string
+        default: ""
+      actionlint-version:
+        description: Pinned actionlint release version.
+        required: false
+        type: string
+        default: "1.7.12"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint workflow YAML with actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Download and verify actionlint
+        env:
+          ACTIONLINT_VERSION: ${{ inputs.actionlint-version }}
+        run: |
+          set -euo pipefail
+          asset="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}"
+          curl -sSLO "${base}/${asset}"
+          curl -sSLO "${base}/actionlint_${ACTIONLINT_VERSION}_checksums.txt"
+          grep -- "${asset}\$" "actionlint_${ACTIONLINT_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "${asset}" actionlint
+
+      - name: Run actionlint
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.files }}" ]; then
+            ./actionlint -color ${{ inputs.files }}
+          else
+            ./actionlint -color
+          fi

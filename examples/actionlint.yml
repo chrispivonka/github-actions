@@ -1,0 +1,24 @@
+# Example caller for reusable-actionlint.yml.
+# Copy into your repo as .github/workflows/actionlint.yml.
+
+name: actionlint
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/**"]
+  pull_request:
+    paths: [".github/workflows/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  actionlint:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-actionlint.yml@main
+    permissions:
+      contents: read

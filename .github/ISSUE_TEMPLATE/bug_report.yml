@@ -1,0 +1,32 @@
+name: Bug report
+description: A reusable workflow doesn't behave as documented.
+labels: [bug]
+body:
+  - type: input
+    id: workflow
+    attributes:
+      label: Which reusable workflow?
+      placeholder: reusable-go-ci.yml
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Link the failing run if you have one.
+    validations:
+      required: true
+  - type: textarea
+    id: caller
+    attributes:
+      label: Your caller workflow
+      description: The `uses:`/`with:`/`permissions:` block that triggered this.
+      render: yaml
+    validations:
+      required: true
