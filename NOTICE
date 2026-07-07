@@ -54,16 +54,22 @@ its authoritative license text.
   actions/upload-pages-artifact              MIT       github.com/actions/upload-pages-artifact
   actions/deploy-pages                      MIT       github.com/actions/deploy-pages
   github/codeql-action                      MIT       github.com/github/codeql-action
-  dtolnay/rust-toolchain                    MIT/Apache-2.0  github.com/dtolnay/rust-toolchain
-  Swatinem/rust-cache                       MIT       github.com/Swatinem/rust-cache
-  golangci/golangci-lint-action             GPL-3.0 (action code, not your Go code) github.com/golangci/golangci-lint-action
-  astral-sh/setup-uv                        MIT/Apache-2.0  github.com/astral-sh/setup-uv
+  dtolnay/rust-toolchain                    MIT       github.com/dtolnay/rust-toolchain
+  Swatinem/rust-cache                       LGPL-3.0  github.com/Swatinem/rust-cache
+  golangci/golangci-lint-action             MIT       github.com/golangci/golangci-lint-action
+  astral-sh/setup-uv                        MIT       github.com/astral-sh/setup-uv
   ossf/scorecard-action                     Apache-2.0  github.com/ossf/scorecard-action
   googleapis/release-please-action          Apache-2.0  github.com/googleapis/release-please-action
   softprops/action-gh-release               MIT       github.com/softprops/action-gh-release
 
 zizmor (invoked via `uvx` in reusable-zizmor.yml, not a GitHub Action):
   zizmor                                    MIT       github.com/woodruffw/zizmor
+
+Note on Swatinem/rust-cache (LGPL-3.0): it is invoked at workflow run time via
+`uses:`, not linked into or distributed with your project's own code, so LGPL-3.0's
+copyleft obligations (which attach to modification/distribution of the action's own
+source) do not extend to the Rust code it caches for. Consult the LGPL-3.0 text
+directly if you have a use case beyond this.
 
 ================================================================================
 A note on SHA pins

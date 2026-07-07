@@ -29,5 +29,5 @@ jobs:
       actions: read
       security-events: write
     with:
-      path: ".github/workflows"
+      path: ".github/workflows examples"
       min-severity: medium
