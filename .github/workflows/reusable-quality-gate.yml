@@ -1,0 +1,191 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable unified quality gate workflow.
+#
+# This provides one stable required-check surface for branch protection while
+# auto-detecting language stacks via reusable-polyglot-monorepo-ci.yml and
+# running core workflow hygiene/security checks. Consumers can require just
+# "<workflow name> / Gate" instead of every per-language matrix check.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/quality-gate.yml
+
+name: Quality gate
+
+on:
+  workflow_call:
+    inputs:
+      run-actions-security:
+        description: Run zizmor against .github/workflows.
+        required: false
+        type: boolean
+        default: true
+      run-actions-lint:
+        description: Run actionlint against .github/workflows.
+        required: false
+        type: boolean
+        default: true
+      os:
+        description: JSON array of runner images for detected stack CI jobs.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      node-versions:
+        description: JSON array forwarded to Node CI when Node changes are detected.
+        required: false
+        type: string
+        default: '["22"]'
+      python-versions:
+        description: JSON array forwarded to Python CI when Python changes are detected.
+        required: false
+        type: string
+        default: '["3.12"]'
+      go-versions:
+        description: JSON array forwarded to Go CI when Go changes are detected.
+        required: false
+        type: string
+        default: '["1.24"]'
+      rust-toolchains:
+        description: JSON array forwarded to Rust CI when Rust changes are detected.
+        required: false
+        type: string
+        default: '["stable"]'
+      dotnet-versions:
+        description: JSON array forwarded to .NET CI when .NET changes are detected.
+        required: false
+        type: string
+        default: '["9.0.x"]'
+      node-paths:
+        description: Newline-delimited globs treated as Node.js projects.
+        required: false
+        type: string
+        default: |
+          package.json
+          package-lock.json
+          pnpm-lock.yaml
+          yarn.lock
+          apps/**/package.json
+          packages/**/package.json
+      python-paths:
+        description: Newline-delimited globs treated as Python projects.
+        required: false
+        type: string
+        default: |
+          pyproject.toml
+          uv.lock
+          requirements*.txt
+          apps/**/pyproject.toml
+          packages/**/pyproject.toml
+      go-paths:
+        description: Newline-delimited globs treated as Go projects.
+        required: false
+        type: string
+        default: |
+          go.mod
+          go.sum
+          cmd/**
+          internal/**
+          pkg/**
+      rust-paths:
+        description: Newline-delimited globs treated as Rust projects.
+        required: false
+        type: string
+        default: |
+          Cargo.toml
+          Cargo.lock
+          crates/**
+      dotnet-paths:
+        description: Newline-delimited globs treated as .NET projects.
+        required: false
+        type: string
+        default: |
+          *.sln
+          *.csproj
+          Directory.Build.props
+          src/**/*.csproj
+          tests/**/*.csproj
+      common-paths:
+        description: Paths that should trigger every enabled stack lane.
+        required: false
+        type: string
+        default: |
+          .github/workflows/**
+          .editorconfig
+          .gitignore
+
+permissions:
+  contents: read
+
+jobs:
+  stack-ci:
+    name: Stack CI (auto-detected)
+    uses: ./.github/workflows/reusable-polyglot-monorepo-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      node-versions: ${{ inputs.node-versions }}
+      python-versions: ${{ inputs.python-versions }}
+      go-versions: ${{ inputs.go-versions }}
+      rust-toolchains: ${{ inputs.rust-toolchains }}
+      dotnet-versions: ${{ inputs.dotnet-versions }}
+      node-paths: ${{ inputs.node-paths }}
+      python-paths: ${{ inputs.python-paths }}
+      go-paths: ${{ inputs.go-paths }}
+      rust-paths: ${{ inputs.rust-paths }}
+      dotnet-paths: ${{ inputs.dotnet-paths }}
+      common-paths: ${{ inputs.common-paths }}
+
+  actions-security:
+    name: Workflow security (zizmor)
+    if: inputs.run-actions-security
+    uses: ./.github/workflows/reusable-zizmor.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      path: .github/workflows
+      min-severity: medium
+
+  actions-lint:
+    name: Workflow lint (actionlint)
+    if: inputs.run-actions-lint
+    uses: ./.github/workflows/reusable-actionlint.yml
+    permissions:
+      contents: read
+    with:
+      files: .github/workflows/*.yml
+
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    needs: [stack-ci, actions-security, actions-lint]
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Enforce unified gate
+        env:
+          STACK_RESULT: ${{ needs.stack-ci.result }}
+          SECURITY_RESULT: ${{ needs.actions-security.result }}
+          LINT_RESULT: ${{ needs.actions-lint.result }}
+        run: |
+          set -euo pipefail
+          failures=0
+          for result in "$STACK_RESULT" "$SECURITY_RESULT" "$LINT_RESULT"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              failures=$((failures + 1))
+            fi
+          done
+
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::Unified quality gate failed. stack=$STACK_RESULT security=$SECURITY_RESULT lint=$LINT_RESULT"
+            exit 1
+          fi
+
+          echo "Unified quality gate passed. stack=$STACK_RESULT security=$SECURITY_RESULT lint=$LINT_RESULT"

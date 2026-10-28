@@ -49,8 +49,7 @@ REQUIRED_REVIEWS=1
 CREATE_ENV_BRANCHES=true
 DRY_RUN=false
 REQUIRED_CHECKS=(
-  "zizmor / Audit workflows with zizmor"
-  "actionlint / Lint workflow YAML with actionlint"
+  "Quality gate / Gate"
 )
 
 while [[ $# -gt 0 ]]; do

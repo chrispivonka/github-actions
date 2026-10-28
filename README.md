@@ -102,6 +102,10 @@ jobs:
 Use `@v1` for backward-compatible updates, or pin a full release tag / commit SHA
 for stricter reproducibility.
 
+For most repos, start with `examples/quality-gate.yml` and set branch protection to
+require only **`Quality gate / Gate`**. The gate workflow auto-detects stack lanes
+and enforces one stable required-check context across repositories.
+
 ## One-command repository bootstrap
 
 This repo includes an idempotent bootstrap script for setting up a consumer
@@ -122,6 +126,8 @@ Useful flags:
 - `--required-check "<check context>"` (repeatable) to customize required status checks,
 - `--preview-env pre-prod --live-env production` for alternate lane naming,
 - `--dry-run` to inspect all API mutations without applying them.
+
+By default, the script configures `Quality gate / Gate` as the required status check.
 
 ## Consumer stability contract (recommended for adoption)
 
@@ -156,6 +162,7 @@ consumers who want compatibility-preserving updates without tracking branch HEAD
 | [`reusable-release-please.yml`](.github/workflows/reusable-release-please.yml) | Conventional-commit release automation: running release PR → tagged GitHub release. | google/dotprompt, google/adk-python family |
 | [`reusable-github-release.yml`](.github/workflows/reusable-github-release.yml) | Publishes a (draft, by default) GitHub Release with build artifacts attached. | apple/container, google/jsonnet |
 | [`reusable-dependabot-automerge.yml`](.github/workflows/reusable-dependabot-automerge.yml) | Enables auto-merge on Dependabot PRs, gated on required CI checks passing — see the header comment before adopting, since it's a no-op without branch protection. | google's broad Dependabot adoption (109 repos in the sample), generalized into a reusable gate |
+| [`reusable-quality-gate.yml`](.github/workflows/reusable-quality-gate.yml) | Unified gate wrapper: auto-detected stack CI + workflow security/lint + one stable gate check for branch protection. | this repo's reusable stack, consolidated into a single required-check surface |
 
 ### Per-language CI (adopt the one matching your stack)
 

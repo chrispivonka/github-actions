@@ -24,6 +24,7 @@
 
   <h4>Core workflows</h4>
   <ul>
+    <li><a href="#quality-gate">Quality gate</a></li>
     <li><a href="#codeql">CodeQL</a></li>
     <li><a href="#dependency-review">Dependency review</a></li>
     <li><a href="#scorecard">OpenSSF Scorecard</a></li>
@@ -167,6 +168,15 @@ jobs:
     <h2>Core workflows <span class="badge core">core</span></h2>
     <p>Language-agnostic, near-universal across actively-maintained repos in the research.
       Adopt these on nearly every repo.</p>
+
+    <div class="card" id="quality-gate">
+      <h4>Quality gate <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-quality-gate.yml</code> · <strong>Purpose:</strong> one stable required-check context</div>
+      <p>Unified wrapper that runs auto-detected stack CI (Node/Python/Go/Rust/.NET),
+        workflow security (zizmor), and workflow linting (actionlint), then emits a
+        single gate result. In branch protection, require only
+        <code>Quality gate / Gate</code> for consistent adoption across repositories.</p>
+    </div>
 
     <div class="card" id="codeql">
       <h4>CodeQL <span class="badge core">core</span></h4>
