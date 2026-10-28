@@ -1,0 +1,205 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Vercel deployment workflow with a strict two-environment model:
+# preview/live (or equivalent names passed by the caller).
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Required caller secret:
+#   secrets:
+#     vercel-token: <Vercel token with deploy permissions>
+#
+# Example caller: examples/deploy-vercel.yml
+
+name: Deploy to Vercel
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment name (must match preview or live name).
+        required: true
+        type: string
+      preview-environment-name:
+        description: Name treated as the non-production lane.
+        required: false
+        type: string
+        default: preview
+      live-environment-name:
+        description: Name treated as the production lane.
+        required: false
+        type: string
+        default: live
+      node-version:
+        description: Node.js version used for the Vercel CLI.
+        required: false
+        type: string
+        default: "22"
+      working-directory:
+        description: Directory containing the Vercel project.
+        required: false
+        type: string
+        default: "."
+      vercel-cli-version:
+        description: Vercel CLI version to execute via npx.
+        required: false
+        type: string
+        default: "43.3.0"
+      vercel-org-id:
+        description: Optional Vercel org ID (for non-interactive linking).
+        required: false
+        type: string
+        default: ""
+      vercel-project-id:
+        description: Optional Vercel project ID (for non-interactive linking).
+        required: false
+        type: string
+        default: ""
+      extra-deploy-args:
+        description: Additional arguments forwarded to `vercel deploy`.
+        required: false
+        type: string
+        default: ""
+      rollback-command:
+        description: Optional command to run if deployment fails after mutation begins.
+        required: false
+        type: string
+        default: ""
+      dry-run:
+        description: Resolve the deploy command without executing it.
+        required: false
+        type: boolean
+        default: false
+      run-smoke-test:
+        description: Run smoke-test-command after deployment.
+        required: false
+        type: boolean
+        default: false
+      smoke-test-command:
+        description: Command that validates deployed behavior.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      vercel-token:
+        required: true
+    outputs:
+      deployment-url:
+        description: URL returned by `vercel deploy`.
+        value: ${{ jobs.deploy.outputs.deployment-url }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-vercel-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    permissions:
+      contents: read
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+    steps:
+      - name: Validate environment input
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          LIVE_ENV: ${{ inputs.live-environment-name }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" != "$PREVIEW_ENV" ] && [ "$ENVIRONMENT" != "$LIVE_ENV" ]; then
+            echo "::error::environment must equal '$PREVIEW_ENV' or '$LIVE_ENV'; got '$ENVIRONMENT'."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Pull Vercel environment settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.vercel-token }}
+          VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+          VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+        run: |
+          set -euo pipefail
+          npx --yes "vercel@${{ inputs.vercel-cli-version }}" pull --yes \
+            --environment="${{ inputs.environment }}" \
+            --token="$VERCEL_TOKEN"
+
+      - name: Deploy
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.vercel-token }}
+          VERCEL_ORG_ID: ${{ inputs.vercel-org-id }}
+          VERCEL_PROJECT_ID: ${{ inputs.vercel-project-id }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          LIVE_ENV: ${{ inputs.live-environment-name }}
+          EXTRA_ARGS: ${{ inputs.extra-deploy-args }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          deploy_args=(--yes --token="$VERCEL_TOKEN")
+          if [ "$ENVIRONMENT" = "$LIVE_ENV" ]; then
+            deploy_args+=(--prod)
+          fi
+          if [ -n "$EXTRA_ARGS" ]; then
+            # shellcheck disable=SC2206
+            extra_array=($EXTRA_ARGS)
+            deploy_args+=("${extra_array[@]}")
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run enabled:"
+            printf '  npx --yes %q deploy ' "vercel@${{ inputs.vercel-cli-version }}"
+            printf '%q ' "${deploy_args[@]}"
+            printf '\n'
+            echo "deployment-url=https://example.invalid/dry-run" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          url="$(
+            npx --yes "vercel@${{ inputs.vercel-cli-version }}" deploy "${deploy_args[@]}" | tail -n1
+          )"
+          if [ -z "$url" ]; then
+            echo "::error::Vercel deployment did not return a URL."
+            exit 1
+          fi
+          echo "deployment-url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $url"
+
+      - name: Smoke test
+        if: inputs.run-smoke-test && !inputs.dry-run
+        env:
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.smoke-test-command }}" ]; then
+            echo "::error::run-smoke-test is true but smoke-test-command is empty."
+            exit 1
+          fi
+          bash -lc "${{ inputs.smoke-test-command }}"
+
+      - name: Rollback on failure
+        if: failure() && !inputs.dry-run && inputs.rollback-command != ''
+        run: |
+          set -euo pipefail
+          bash -lc "${{ inputs.rollback-command }}"

@@ -1,0 +1,35 @@
+# Example caller for reusable-quality-gate.yml.
+# Copy into your repo as .github/workflows/quality-gate.yml.
+#
+# This workflow is designed to be the single required status check in branch
+# protection: "Quality gate / Gate".
+
+name: Quality gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  gate:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-quality-gate.yml@v1
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      os: '["ubuntu-latest"]'
+      node-versions: '["22", "24"]'
+      python-versions: '["3.12", "3.13"]'
+      go-versions: '["1.23", "1.24"]'
+      rust-toolchains: '["stable", "beta"]'
+      dotnet-versions: '["8.0.x", "9.0.x"]'

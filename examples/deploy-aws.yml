@@ -1,0 +1,43 @@
+# Example caller for reusable-deploy-aws.yml.
+# Copy into your repo as .github/workflows/deploy-aws.yml.
+#
+# Assumes:
+# - build output exists at ./dist
+# - ROLE_ARN and CLOUDFRONT_DISTRIBUTION_ID are Actions variables
+# - AWS_STATIC_BUCKET is an Actions variable
+# - GitHub Environments named "preview" and "live" exist (configure protection
+#   rules on "live" before adopting in production)
+
+name: Deploy (AWS)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-deploy-aws.yml@v1
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      environment: ${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+      role-to-assume: ${{ vars.ROLE_ARN }}
+      aws-region: us-east-1
+      artifact-path: dist
+      s3-bucket: ${{ vars.AWS_STATIC_BUCKET }}
+      s3-prefix: app
+      cloudfront-distribution-id: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      run-smoke-test: true
+      smoke-test-command: curl --fail --silent --show-error "https://example.com/healthz"
+      rollback-command: echo "Add your AWS rollback command here."

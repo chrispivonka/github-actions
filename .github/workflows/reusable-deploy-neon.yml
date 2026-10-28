@@ -1,0 +1,194 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Neon deployment workflow for SQL migrations with a strict two-
+# environment model: preview/live (or equivalent names passed by the caller).
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Required caller secrets:
+#   secrets:
+#     neon-database-url-preview: <connection string for preview>
+#     neon-database-url-live: <connection string for live>
+#
+# Example caller: examples/deploy-neon.yml
+
+name: Deploy to Neon
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment name (must match preview or live name).
+        required: true
+        type: string
+      preview-environment-name:
+        description: Name treated as the non-production lane.
+        required: false
+        type: string
+        default: preview
+      live-environment-name:
+        description: Name treated as the production lane.
+        required: false
+        type: string
+        default: live
+      working-directory:
+        description: Directory containing migration files.
+        required: false
+        type: string
+        default: "."
+      migrations-path:
+        description: Directory containing SQL migration files.
+        required: false
+        type: string
+        default: db/migrations
+      postgres-client-package:
+        description: Apt package name for psql client (pin major version for reproducibility).
+        required: false
+        type: string
+        default: postgresql-client-16
+      migration-glob:
+        description: Glob used to select migration files within migrations-path.
+        required: false
+        type: string
+        default: "*.sql"
+      run-migrations:
+        description: Execute SQL migration files in lexical order.
+        required: false
+        type: boolean
+        default: true
+      dry-run:
+        description: Print migration plan without executing SQL.
+        required: false
+        type: boolean
+        default: false
+      rollback-command:
+        description: Optional command to run if deployment fails after mutation begins.
+        required: false
+        type: string
+        default: ""
+      run-smoke-test:
+        description: Run smoke-query after migrations.
+        required: false
+        type: boolean
+        default: true
+      smoke-query:
+        description: SQL query used for post-deploy validation.
+        required: false
+        type: string
+        default: "SELECT 1;"
+    secrets:
+      neon-database-url-preview:
+        required: true
+      neon-database-url-live:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Neon
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-neon-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    permissions:
+      contents: read
+    steps:
+      - name: Validate environment input
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          LIVE_ENV: ${{ inputs.live-environment-name }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" != "$PREVIEW_ENV" ] && [ "$ENVIRONMENT" != "$LIVE_ENV" ]; then
+            echo "::error::environment must equal '$PREVIEW_ENV' or '$LIVE_ENV'; got '$ENVIRONMENT'."
+            exit 1
+          fi
+
+      - name: Resolve target database URL
+        id: target
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          PREVIEW_URL: ${{ secrets.neon-database-url-preview }}
+          LIVE_URL: ${{ secrets.neon-database-url-live }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" = "$PREVIEW_ENV" ]; then
+            database_url="$PREVIEW_URL"
+          else
+            database_url="$LIVE_URL"
+          fi
+          if [ -z "$database_url" ]; then
+            echo "::error::Resolved database URL is empty."
+            exit 1
+          fi
+          echo "database-url=$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ensure psql client is installed
+        run: |
+          set -euo pipefail
+          if command -v psql >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y "${{ inputs.postgres-client-package }}"
+
+      - name: Apply SQL migrations
+        if: inputs.run-migrations
+        env:
+          DATABASE_URL: ${{ steps.target.outputs.database-url }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "${{ inputs.migrations-path }}" ]; then
+            echo "::error::migrations-path '${{ inputs.migrations-path }}' does not exist."
+            exit 1
+          fi
+
+          mapfile -t migrations < <(
+            find "${{ inputs.migrations-path }}" -maxdepth 1 -type f -name "${{ inputs.migration-glob }}" | sort
+          )
+          if [ "${#migrations[@]}" -eq 0 ]; then
+            echo "::notice::No migrations matched '${{ inputs.migration-glob }}' in '${{ inputs.migrations-path }}'."
+            exit 0
+          fi
+
+          for migration in "${migrations[@]}"; do
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run: would apply $migration"
+            else
+              echo "Applying $migration"
+              psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+            fi
+          done
+
+      - name: Smoke test query
+        if: inputs.run-smoke-test && !inputs.dry-run
+        env:
+          DATABASE_URL: ${{ steps.target.outputs.database-url }}
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "${{ inputs.smoke-query }}"
+
+      - name: Rollback on failure
+        if: failure() && !inputs.dry-run && inputs.rollback-command != ''
+        run: |
+          set -euo pipefail
+          bash -lc "${{ inputs.rollback-command }}"

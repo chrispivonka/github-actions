@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   release-please:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-release-please.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-release-please.yml@v1
     permissions:
       contents: write
       pull-requests: write

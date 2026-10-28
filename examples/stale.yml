@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   stale:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-stale.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-stale.yml@v1
     permissions:
       issues: write
       pull-requests: write

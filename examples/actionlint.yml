@@ -19,6 +19,6 @@ concurrency:
 
 jobs:
   actionlint:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-actionlint.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-actionlint.yml@v1
     permissions:
       contents: read

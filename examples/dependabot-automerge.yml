@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   automerge:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-dependabot-automerge.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-dependabot-automerge.yml@v1
     permissions:
       contents: write
       pull-requests: write

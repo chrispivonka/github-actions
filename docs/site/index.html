@@ -18,11 +18,13 @@
   <ul>
     <li><a href="#overview">Overview</a></li>
     <li><a href="#quick-start">Quick start</a></li>
+    <li><a href="#stability-contract">Stability contract</a></li>
     <li><a href="#conventions">Conventions</a></li>
   </ul>
 
   <h4>Core workflows</h4>
   <ul>
+    <li><a href="#quality-gate">Quality gate</a></li>
     <li><a href="#codeql">CodeQL</a></li>
     <li><a href="#dependency-review">Dependency review</a></li>
     <li><a href="#scorecard">OpenSSF Scorecard</a></li>
@@ -40,6 +42,15 @@
     <li><a href="#go-ci">Go CI</a></li>
     <li><a href="#rust-ci">Rust CI</a></li>
     <li><a href="#dotnet-ci">.NET CI</a></li>
+    <li><a href="#polyglot-monorepo-ci">Polyglot monorepo CI</a></li>
+  </ul>
+
+  <h4>Deployment workflows</h4>
+  <ul>
+    <li><a href="#deploy-aws">Deploy to AWS</a></li>
+    <li><a href="#deploy-vercel">Deploy to Vercel</a></li>
+    <li><a href="#deploy-supabase">Deploy to Supabase</a></li>
+    <li><a href="#deploy-neon">Deploy to Neon</a></li>
   </ul>
 
   <h4>Background</h4>
@@ -93,14 +104,19 @@ permissions:
 
 jobs:
   ci:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-go-ci.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-go-ci.yml@v1
     permissions:
       contents: read
     with:
       go-versions: '["1.23", "1.24"]'</code></pre>
-    <p class="toc-jump">Pin <code>@main</code> to a tag or commit SHA once this repo starts cutting
-      releases — the way <code>swift-collections</code> pins
-      <code>swiftlang/github-workflows@0.0.12</code> rather than tracking a branch.</p>
+    <p class="toc-jump">Use <code>@v1</code> for backward-compatible updates, or pin a
+      full release tag / commit SHA for stricter reproducibility.</p>
+    <div class="callout">
+      <strong>Repo setup automation:</strong> this library ships an idempotent bootstrap
+      script at <code>scripts/bootstrap-repo.sh</code> that configures main-branch
+      protection, Actions workflow-token defaults, preview/live environments, and
+      optional preview/live branches using the GitHub CLI API.
+    </div>
   </section>
 
   <section id="conventions">
@@ -134,10 +150,33 @@ jobs:
     </table>
   </section>
 
+  <section id="stability-contract">
+    <h2>Consumer stability contract</h2>
+    <p>For production adoption, pin workflow refs to release tags or SHAs (for example
+      <code>@v1</code>), not a floating branch. This library ships SemVer releases where
+      patch/minor changes are backward compatible and major releases carry breaking
+      behavior/input changes.</p>
+    <p>Recommended consumer refs:</p>
+    <ul>
+      <li><code>@v1</code> for opt-in minor/patch updates with compatibility</li>
+      <li><code>@v1.2.3</code> for immutable release pinning</li>
+      <li><code>@&lt;commit-sha&gt;</code> for maximal supply-chain immutability</li>
+    </ul>
+  </section>
+
   <section id="core-workflows">
     <h2>Core workflows <span class="badge core">core</span></h2>
     <p>Language-agnostic, near-universal across actively-maintained repos in the research.
       Adopt these on nearly every repo.</p>
+
+    <div class="card" id="quality-gate">
+      <h4>Quality gate <span class="badge core">core</span></h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-quality-gate.yml</code> · <strong>Purpose:</strong> one stable required-check context</div>
+      <p>Unified wrapper that runs auto-detected stack CI (Node/Python/Go/Rust/.NET),
+        workflow security (zizmor), and workflow linting (actionlint), then emits a
+        single gate result. In branch protection, require only
+        <code>Quality gate / Gate</code> for consistent adoption across repositories.</p>
+    </div>
 
     <div class="card" id="codeql">
       <h4>CodeQL <span class="badge core">core</span></h4>
@@ -389,6 +428,55 @@ jobs:
         Swift/Java/C++/Go/Python) — this workflow adapts the same staging pattern used by the
         other language workflows here rather than citing a specific org example.
       </div>
+    </div>
+  </section>
+
+  <section id="deployments">
+    <h2>Deployment workflows <span class="badge supp">supplementary</span></h2>
+    <p>These reusable workflows share one two-lane contract:
+      <code>environment</code> must be either your preview lane name or your live lane
+      name (for example <code>preview</code>/<code>live</code> or
+      <code>pre-prod</code>/<code>production</code>).</p>
+
+    <div class="card" id="polyglot-monorepo-ci">
+      <h4>Polyglot monorepo CI</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-polyglot-monorepo-ci.yml</code> · <strong>Flow:</strong> changed-path detection → fan-out language lanes</div>
+      <p>Runs Node/Python/Go/Rust/.NET reusable CI lanes only when their files (or common
+        shared files) change. This keeps monorepo CI fast while preserving stack-specific
+        quality gates.</p>
+    </div>
+
+    <div class="card" id="deploy-aws">
+      <h4>Deploy to AWS</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-deploy-aws.yml</code> · <strong>Target:</strong> S3 + optional CloudFront</div>
+      <p>Assumes an IAM role via OIDC, syncs an artifact directory to an environment-specific
+        S3 path, optionally invalidates CloudFront, and supports dry-run + smoke-test +
+        rollback hooks.</p>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code>, <code>id-token: write</code></p>
+    </div>
+
+    <div class="card" id="deploy-vercel">
+      <h4>Deploy to Vercel</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-deploy-vercel.yml</code> · <strong>Target:</strong> preview or production deployment</div>
+      <p>Deploys with Vercel CLI, returns the deployment URL, and supports optional smoke
+        checks and rollback commands.</p>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code> and a <code>vercel-token</code> secret</p>
+    </div>
+
+    <div class="card" id="deploy-supabase">
+      <h4>Deploy to Supabase</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-deploy-supabase.yml</code> · <strong>Target:</strong> DB migrations + optional Edge Functions</div>
+      <p>Resolves lane-specific Supabase project refs, uses a pinned Supabase CLI version,
+        pushes migrations, and can deploy all edge functions in a directory.</p>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code> and a <code>supabase-access-token</code> secret</p>
+    </div>
+
+    <div class="card" id="deploy-neon">
+      <h4>Deploy to Neon</h4>
+      <div class="meta"><strong>File:</strong> <code>reusable-deploy-neon.yml</code> · <strong>Target:</strong> SQL migrations on lane-specific databases</div>
+      <p>Chooses preview/live database connection strings, applies ordered SQL migrations, runs
+        a post-deploy smoke query by default, and pins the Postgres client major package.</p>
+      <p><strong>Required caller permissions:</strong> <code>contents: read</code> and Neon DB URL secrets for preview/live lanes</p>
     </div>
   </section>
 

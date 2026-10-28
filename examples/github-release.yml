@@ -35,7 +35,7 @@ jobs:
 
   release:
     needs: build
-    uses: chrispivonka/github-actions/.github/workflows/reusable-github-release.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-github-release.yml@v1
     permissions:
       contents: write
     with:

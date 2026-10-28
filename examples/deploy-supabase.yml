@@ -1,0 +1,40 @@
+# Example caller for reusable-deploy-supabase.yml.
+# Copy into your repo as .github/workflows/deploy-supabase.yml.
+#
+# Assumes:
+# - SUPABASE_ACCESS_TOKEN is an Actions secret
+# - SUPABASE_PROJECT_REF_PREVIEW and SUPABASE_PROJECT_REF_LIVE are Actions variables
+# - GitHub Environments named "preview" and "live" exist (configure protection
+#   rules on "live" before adopting in production)
+
+name: Deploy (Supabase)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-supabase-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-deploy-supabase.yml@v1
+    permissions:
+      contents: read
+    with:
+      environment: ${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+      preview-project-ref: ${{ vars.SUPABASE_PROJECT_REF_PREVIEW }}
+      live-project-ref: ${{ vars.SUPABASE_PROJECT_REF_LIVE }}
+      run-db-push: true
+      deploy-functions: true
+      run-smoke-test: false
+      supabase-cli-version: "2.122.0"
+      rollback-command: echo "Add your Supabase rollback command here."
+    secrets:
+      supabase-access-token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

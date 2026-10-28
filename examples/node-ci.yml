@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-node-ci.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-node-ci.yml@v1
     permissions:
       contents: read
     with:

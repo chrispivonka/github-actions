@@ -66,6 +66,10 @@ This repo dogfoods its own library:
   configuration it would merge immediately, before CI even runs. See
   `reusable-dependabot-automerge.yml`'s header comment before adopting this
   pattern elsewhere.
+- **`release-library.yml`** runs release-please on every push to main, opens or
+  updates a release PR from conventional commits, creates SemVer tags and GitHub
+  Releases on merge, and updates the moving major channel tag (for example `v1` →
+  latest `v1.x.y`) for safe consumer opt-in upgrades.
 
 ## Quick start
 
@@ -88,16 +92,59 @@ permissions:
 
 jobs:
   ci:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-go-ci.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-go-ci.yml@v1
     permissions:
       contents: read
     with:
       go-versions: '["1.23", "1.24"]'
 ```
 
-Pin `@main` to a tag or commit SHA once this repo starts cutting releases, the same
-way `swift-collections` pins `swiftlang/github-workflows@0.0.12` rather than
-tracking a branch.
+Use `@v1` for backward-compatible updates, or pin a full release tag / commit SHA
+for stricter reproducibility.
+
+For most repos, start with `examples/quality-gate.yml` and set branch protection to
+require only **`Quality gate / Gate`**. The gate workflow auto-detects stack lanes
+and enforces one stable required-check context across repositories.
+
+## One-command repository bootstrap
+
+This repo includes an idempotent bootstrap script for setting up a consumer
+repository with the recommended baseline:
+- main branch protection (required checks, reviews, linear history, conversation
+  resolution, signature enforcement),
+- Actions token defaults required for release automation,
+- preview/live GitHub Environments (or custom names),
+- optional creation of matching preview/live branches.
+
+```bash
+scripts/bootstrap-repo.sh --repo owner/repo
+```
+
+Useful flags:
+- `--live-reviewer <github-user>` to require an approver for live deployments,
+- `--live-wait-minutes <n>` to add an environment wait timer,
+- `--required-check "<check context>"` (repeatable) to customize required status checks,
+- `--preview-env pre-prod --live-env production` for alternate lane naming,
+- `--dry-run` to inspect all API mutations without applying them.
+
+By default, the script configures `Quality gate / Gate` as the required status check.
+
+## Consumer stability contract (recommended for adoption)
+
+To avoid breaking consumers unexpectedly as this library evolves:
+
+1. **Pin consumer workflow calls to a release tag or SHA** (`@v1` or
+   `@<commit-sha>`), not `@main`.
+2. **Use SemVer releases for this repository**:
+   - patch/minor releases are backward compatible for existing inputs/defaults,
+   - major releases may change behavior or remove/deprecate inputs.
+3. **Maintain a moving major tag** (`v1` → latest `v1.x.y`) and immutable full
+   tags (`v1.2.3`) so consumers can choose stability vs. controlled updates.
+4. **Treat reusable workflow input removals/default-behavior changes as breaking**
+   and ship those only in the next major tag.
+
+`examples/` in this repo pin to `@v1`, reflecting the default adoption path for
+consumers who want compatibility-preserving updates without tracking branch HEAD.
 
 ## Workflow catalog
 
@@ -115,6 +162,7 @@ tracking a branch.
 | [`reusable-release-please.yml`](.github/workflows/reusable-release-please.yml) | Conventional-commit release automation: running release PR → tagged GitHub release. | google/dotprompt, google/adk-python family |
 | [`reusable-github-release.yml`](.github/workflows/reusable-github-release.yml) | Publishes a (draft, by default) GitHub Release with build artifacts attached. | apple/container, google/jsonnet |
 | [`reusable-dependabot-automerge.yml`](.github/workflows/reusable-dependabot-automerge.yml) | Enables auto-merge on Dependabot PRs, gated on required CI checks passing — see the header comment before adopting, since it's a no-op without branch protection. | google's broad Dependabot adoption (109 repos in the sample), generalized into a reusable gate |
+| [`reusable-quality-gate.yml`](.github/workflows/reusable-quality-gate.yml) | Unified gate wrapper: auto-detected stack CI + workflow security/lint + one stable gate check for branch protection. | this repo's reusable stack, consolidated into a single required-check surface |
 
 ### Per-language CI (adopt the one matching your stack)
 
@@ -125,11 +173,39 @@ tracking a branch.
 | [`reusable-go-ci.yml`](.github/workflows/reusable-go-ci.yml) | Go | vet → golangci-lint → test (race + coverage), across a Go-version matrix |
 | [`reusable-rust-ci.yml`](.github/workflows/reusable-rust-ci.yml) | Rust | fmt --check → clippy -D warnings → test, across a toolchain matrix |
 | [`reusable-dotnet-ci.yml`](.github/workflows/reusable-dotnet-ci.yml) | C# / .NET | restore → format check → build → test, across an SDK-version matrix |
+| [`reusable-polyglot-monorepo-ci.yml`](.github/workflows/reusable-polyglot-monorepo-ci.yml) | Polyglot monorepo orchestration | changed-path detection → fan-out into Node/Python/Go/Rust/.NET reusable CI lanes only when relevant |
 
 Every CI workflow takes `os` and its version-axis input as JSON arrays, so a caller
 gets a full matrix build for free — the same shape as Apple's
 `swift_package_test.yml` and Google's per-language build matrices, just scoped to
 one language per workflow instead of one mega-workflow.
+
+### Deployment workflows (preview/live two-lane model)
+
+All deployment workflows in this repo follow the same contract:
+- caller passes an `environment` input,
+- `environment` must match either the configured preview lane name or live lane name,
+- the workflow resolves provider-specific targets from that lane and deploys accordingly.
+
+This supports naming like `preview/live` or `pre-prod/production` while keeping one
+reusable interface shape.
+
+| Workflow | Target | What it does |
+|---|---|---|
+| [`reusable-deploy-aws.yml`](.github/workflows/reusable-deploy-aws.yml) | AWS (S3 + optional CloudFront invalidation) | Assumes AWS role via OIDC, syncs artifacts to an environment-specific S3 path, optionally invalidates CloudFront, optionally runs smoke checks. |
+| [`reusable-deploy-vercel.yml`](.github/workflows/reusable-deploy-vercel.yml) | Vercel | Deploys with Vercel CLI to preview or production lane, returns deployment URL, optionally runs smoke checks against the deployed URL. |
+| [`reusable-deploy-supabase.yml`](.github/workflows/reusable-deploy-supabase.yml) | Supabase | Resolves per-lane project refs, runs pinned Supabase CLI, pushes DB migrations, optionally deploys Edge Functions, optionally runs smoke checks. |
+| [`reusable-deploy-neon.yml`](.github/workflows/reusable-deploy-neon.yml) | Neon (Postgres) | Resolves per-lane DB URL secrets, applies ordered SQL migrations, runs a post-deploy smoke query, and pins Postgres client major version by default. |
+
+All deployment workflows include:
+- **serialized deploy concurrency** (`cancel-in-progress: false`) to avoid
+  interrupting in-flight live releases,
+- optional **rollback-command** hooks on failure,
+- dry-run and smoke-test controls.
+
+In callers, pair these with GitHub **Environment protection rules** (`preview` and
+`live`, or `pre-prod` and `production`) so live deployments require explicit
+approval where appropriate.
 
 ### Supplementary (adopt case by case)
 
@@ -145,7 +221,12 @@ Treat these as available, not mandatory:
 - **Per-language CI** — only add the one matching your stack; don't stack
   multiple language workflows unless the repo is genuinely polyglot (see
   `google/magika`'s per-language pattern in the research for how that's structured
-  when it's warranted).
+  when it's warranted). For monorepos, prefer `reusable-polyglot-monorepo-ci.yml`
+  to fan out only the lanes touched by a change.
+- **Cloud/database deployment workflows** are intentionally provider-specific
+  wrappers around a shared preview/live contract. Use the one matching your
+  platform (`aws`, `vercel`, `supabase`, `neon`) rather than forcing one generic
+  deploy script across all stacks.
 - **stale / labeler** matter most on high-traffic repos with real triage burden;
   skip them on low-traffic or internal-only repos where they'd just add noise.
 

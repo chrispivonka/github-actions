@@ -1,0 +1,198 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable AWS deployment workflow for static artifacts (S3 + optional CloudFront
+# invalidation), with a strict two-environment model: preview/live (or equivalent).
+#
+# This follows the least-privilege + OIDC pattern used broadly in modern cloud
+# deployments: caller grants id-token: write, and AWS role assumption happens at
+# runtime (no long-lived AWS keys in repo secrets).
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#     id-token: write
+#
+# Example caller: examples/deploy-aws.yml
+
+name: Deploy to AWS
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment name (must match preview or live name).
+        required: true
+        type: string
+      preview-environment-name:
+        description: Name treated as the non-production lane.
+        required: false
+        type: string
+        default: preview
+      live-environment-name:
+        description: Name treated as the production lane.
+        required: false
+        type: string
+        default: live
+      aws-region:
+        description: AWS region for deployment.
+        required: false
+        type: string
+        default: us-east-1
+      role-to-assume:
+        description: IAM role ARN assumed via GitHub OIDC.
+        required: true
+        type: string
+      artifact-path:
+        description: Directory to sync to S3.
+        required: false
+        type: string
+        default: dist
+      s3-bucket:
+        description: Target S3 bucket.
+        required: true
+        type: string
+      s3-prefix:
+        description: Optional parent prefix in bucket (environment is appended).
+        required: false
+        type: string
+        default: ""
+      cache-control:
+        description: Optional Cache-Control value for uploaded files.
+        required: false
+        type: string
+        default: ""
+      cloudfront-distribution-id:
+        description: Optional CloudFront distribution to invalidate.
+        required: false
+        type: string
+        default: ""
+      rollback-command:
+        description: Optional command to run if deployment fails after mutation begins.
+        required: false
+        type: string
+        default: ""
+      dry-run:
+        description: Validate and print actions without mutating AWS resources.
+        required: false
+        type: boolean
+        default: false
+      run-smoke-test:
+        description: Run smoke-test-command after deployment.
+        required: false
+        type: boolean
+        default: false
+      smoke-test-command:
+        description: Command that validates deployed behavior.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      s3-uri:
+        description: S3 URI synced by this deployment.
+        value: ${{ jobs.deploy.outputs.s3-uri }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy artifact to AWS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-aws-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      s3-uri: ${{ steps.target.outputs.s3-uri }}
+    steps:
+      - name: Validate environment input
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          LIVE_ENV: ${{ inputs.live-environment-name }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" != "$PREVIEW_ENV" ] && [ "$ENVIRONMENT" != "$LIVE_ENV" ]; then
+            echo "::error::environment must equal '$PREVIEW_ENV' or '$LIVE_ENV'; got '$ENVIRONMENT'."
+            exit 1
+          fi
+
+      - name: Resolve target S3 URI
+        id: target
+        env:
+          BUCKET: ${{ inputs.s3-bucket }}
+          PREFIX: ${{ inputs.s3-prefix }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          cleaned_prefix="${PREFIX#/}"
+          cleaned_prefix="${cleaned_prefix%/}"
+          if [ -n "$cleaned_prefix" ]; then
+            s3_uri="s3://${BUCKET}/${cleaned_prefix}/${ENVIRONMENT}"
+          else
+            s3_uri="s3://${BUCKET}/${ENVIRONMENT}"
+          fi
+          echo "s3-uri=$s3_uri" >> "$GITHUB_OUTPUT"
+          echo "Target: $s3_uri"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@00943011d9042930efac3dcd3a170e4273319bc8 # v5.1.0
+        with:
+          role-to-assume: ${{ inputs.role-to-assume }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Deploy to S3
+        env:
+          ARTIFACT_PATH: ${{ inputs.artifact-path }}
+          S3_URI: ${{ steps.target.outputs.s3-uri }}
+          CACHE_CONTROL: ${{ inputs.cache-control }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$ARTIFACT_PATH" ]; then
+            echo "::error::artifact-path '$ARTIFACT_PATH' does not exist or is not a directory."
+            exit 1
+          fi
+          cache_flag=()
+          if [ -n "$CACHE_CONTROL" ]; then
+            cache_flag=(--cache-control "$CACHE_CONTROL")
+          fi
+          base_cmd=(aws s3 sync "$ARTIFACT_PATH" "$S3_URI" --delete "${cache_flag[@]}")
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run enabled:"
+            printf '  %q' "${base_cmd[@]}" --dryrun
+            printf '\n'
+            "${base_cmd[@]}" --dryrun
+          else
+            "${base_cmd[@]}"
+          fi
+
+      - name: Invalidate CloudFront cache
+        if: inputs.cloudfront-distribution-id != '' && !inputs.dry-run
+        run: |
+          set -euo pipefail
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ inputs.cloudfront-distribution-id }}" \
+            --paths "/*"
+
+      - name: Smoke test
+        if: inputs.run-smoke-test
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.smoke-test-command }}" ]; then
+            echo "::error::run-smoke-test is true but smoke-test-command is empty."
+            exit 1
+          fi
+          bash -lc "${{ inputs.smoke-test-command }}"
+
+      - name: Rollback on failure
+        if: failure() && !inputs.dry-run && inputs.rollback-command != ''
+        run: |
+          set -euo pipefail
+          bash -lc "${{ inputs.rollback-command }}"
