@@ -1,0 +1,39 @@
+# Example caller for reusable-deploy-vercel.yml.
+# Copy into your repo as .github/workflows/deploy-vercel.yml.
+#
+# Assumes:
+# - VERCEL_TOKEN is an Actions secret
+# - VERCEL_ORG_ID and VERCEL_PROJECT_ID are Actions variables
+# - GitHub Environments named "preview" and "live" exist (configure protection
+#   rules on "live" before adopting in production)
+
+name: Deploy (Vercel)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vercel-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-deploy-vercel.yml@v1
+    permissions:
+      contents: read
+    with:
+      environment: ${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+      working-directory: .
+      vercel-org-id: ${{ vars.VERCEL_ORG_ID }}
+      vercel-project-id: ${{ vars.VERCEL_PROJECT_ID }}
+      run-smoke-test: true
+      smoke-test-command: curl --fail --silent --show-error "$DEPLOYMENT_URL"
+      rollback-command: echo "Add your Vercel rollback command here."
+    secrets:
+      vercel-token: ${{ secrets.VERCEL_TOKEN }}

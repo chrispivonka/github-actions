@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   codeql:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-codeql.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-codeql.yml@v1
     permissions:
       actions: read
       contents: read

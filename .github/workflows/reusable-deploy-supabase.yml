@@ -1,0 +1,210 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable Supabase deployment workflow for DB migrations and optional Edge
+# Functions deployment, with a strict two-environment model: preview/live (or
+# equivalent names passed by the caller).
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Required caller secret:
+#   secrets:
+#     supabase-access-token: <Supabase personal access token>
+#
+# Example caller: examples/deploy-supabase.yml
+
+name: Deploy to Supabase
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Deployment environment name (must match preview or live name).
+        required: true
+        type: string
+      preview-environment-name:
+        description: Name treated as the non-production lane.
+        required: false
+        type: string
+        default: preview
+      live-environment-name:
+        description: Name treated as the production lane.
+        required: false
+        type: string
+        default: live
+      preview-project-ref:
+        description: Supabase project ref for preview environment.
+        required: true
+        type: string
+      live-project-ref:
+        description: Supabase project ref for live environment.
+        required: true
+        type: string
+      working-directory:
+        description: Directory containing supabase/ config and migrations.
+        required: false
+        type: string
+        default: "."
+      supabase-cli-version:
+        description: Pinned Supabase CLI version.
+        required: false
+        type: string
+        default: "2.122.0"
+      run-db-push:
+        description: Apply migrations with `supabase db push`.
+        required: false
+        type: boolean
+        default: true
+      deploy-functions:
+        description: Deploy Edge Functions from functions-path.
+        required: false
+        type: boolean
+        default: false
+      functions-path:
+        description: Path containing one subdirectory per Edge Function.
+        required: false
+        type: string
+        default: supabase/functions
+      rollback-command:
+        description: Optional command to run if deployment fails after mutation begins.
+        required: false
+        type: string
+        default: ""
+      dry-run:
+        description: Validate and print actions without mutating Supabase.
+        required: false
+        type: boolean
+        default: false
+      run-smoke-test:
+        description: Run smoke-test-command after deployment.
+        required: false
+        type: boolean
+        default: false
+      smoke-test-command:
+        description: Command that validates deployed behavior.
+        required: false
+        type: string
+        default: ""
+    secrets:
+      supabase-access-token:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-supabase-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    permissions:
+      contents: read
+    steps:
+      - name: Validate environment input
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          LIVE_ENV: ${{ inputs.live-environment-name }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" != "$PREVIEW_ENV" ] && [ "$ENVIRONMENT" != "$LIVE_ENV" ]; then
+            echo "::error::environment must equal '$PREVIEW_ENV' or '$LIVE_ENV'; got '$ENVIRONMENT'."
+            exit 1
+          fi
+
+      - name: Resolve target Supabase project
+        id: target
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          PREVIEW_ENV: ${{ inputs.preview-environment-name }}
+          PREVIEW_REF: ${{ inputs.preview-project-ref }}
+          LIVE_REF: ${{ inputs.live-project-ref }}
+        run: |
+          set -euo pipefail
+          if [ "$ENVIRONMENT" = "$PREVIEW_ENV" ]; then
+            project_ref="$PREVIEW_REF"
+          else
+            project_ref="$LIVE_REF"
+          fi
+          if [ -z "$project_ref" ]; then
+            echo "::error::Resolved project_ref is empty."
+            exit 1
+          fi
+          echo "project-ref=$project_ref" >> "$GITHUB_OUTPUT"
+          echo "Target project: $project_ref"
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
+        with:
+          version: ${{ inputs.supabase-cli-version }}
+
+      - name: Link project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.supabase-access-token }}
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "${{ steps.target.outputs.project-ref }}"
+
+      - name: Push database migrations
+        if: inputs.run-db-push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.supabase-access-token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "Dry run: supabase db push --include-all"
+            exit 0
+          fi
+          supabase db push --include-all
+
+      - name: Deploy Edge Functions
+        if: inputs.deploy-functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.supabase-access-token }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "${{ inputs.functions-path }}" ]; then
+            echo "::error::functions-path '${{ inputs.functions-path }}' does not exist."
+            exit 1
+          fi
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "Dry run: would deploy functions under '${{ inputs.functions-path }}'."
+            find "${{ inputs.functions-path }}" -mindepth 1 -maxdepth 1 -type d -print
+            exit 0
+          fi
+          while IFS= read -r function_dir; do
+            function_name="$(basename "$function_dir")"
+            echo "Deploying function: $function_name"
+            supabase functions deploy "$function_name"
+          done < <(find "${{ inputs.functions-path }}" -mindepth 1 -maxdepth 1 -type d | sort)
+
+      - name: Smoke test
+        if: inputs.run-smoke-test && !inputs.dry-run
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.smoke-test-command }}" ]; then
+            echo "::error::run-smoke-test is true but smoke-test-command is empty."
+            exit 1
+          fi
+          bash -lc "${{ inputs.smoke-test-command }}"
+
+      - name: Rollback on failure
+        if: failure() && !inputs.dry-run && inputs.rollback-command != ''
+        run: |
+          set -euo pipefail
+          bash -lc "${{ inputs.rollback-command }}"

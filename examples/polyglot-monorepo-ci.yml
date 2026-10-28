@@ -1,0 +1,29 @@
+# Example caller for reusable-polyglot-monorepo-ci.yml.
+# Copy into your repo as .github/workflows/ci.yml.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-polyglot-monorepo-ci.yml@v1
+    permissions:
+      contents: read
+    with:
+      node-versions: '["22", "24"]'
+      python-versions: '["3.12", "3.13"]'
+      go-versions: '["1.23", "1.24"]'
+      rust-toolchains: '["stable", "beta"]'
+      dotnet-versions: '["8.0.x", "9.0.x"]'

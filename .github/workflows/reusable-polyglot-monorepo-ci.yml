@@ -1,0 +1,236 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Reusable polyglot monorepo CI orchestrator.
+#
+# Inspired by Google's polyglot-repo practice (for example google/magika's split
+# language workflows) and GitLab's path-filtered pipeline fan-out, translated to
+# GitHub Actions via reusable workflows + changed-path detection.
+#
+# Required caller permissions:
+#   permissions:
+#     contents: read
+#
+# Example caller: examples/polyglot-monorepo-ci.yml
+
+name: Polyglot monorepo CI
+
+on:
+  workflow_call:
+    inputs:
+      node-paths:
+        description: Newline-delimited glob list treated as Node.js projects.
+        required: false
+        type: string
+        default: |
+          package.json
+          package-lock.json
+          pnpm-lock.yaml
+          yarn.lock
+          apps/**/package.json
+          packages/**/package.json
+      python-paths:
+        description: Newline-delimited glob list treated as Python projects.
+        required: false
+        type: string
+        default: |
+          pyproject.toml
+          uv.lock
+          requirements*.txt
+          apps/**/pyproject.toml
+          packages/**/pyproject.toml
+      go-paths:
+        description: Newline-delimited glob list treated as Go projects.
+        required: false
+        type: string
+        default: |
+          go.mod
+          go.sum
+          cmd/**
+          internal/**
+          pkg/**
+      rust-paths:
+        description: Newline-delimited glob list treated as Rust projects.
+        required: false
+        type: string
+        default: |
+          Cargo.toml
+          Cargo.lock
+          crates/**
+      dotnet-paths:
+        description: Newline-delimited glob list treated as .NET projects.
+        required: false
+        type: string
+        default: |
+          *.sln
+          *.csproj
+          Directory.Build.props
+          src/**/*.csproj
+          tests/**/*.csproj
+      common-paths:
+        description: Paths that should trigger every enabled language lane.
+        required: false
+        type: string
+        default: |
+          .github/workflows/**
+          .editorconfig
+          .gitignore
+      run-node:
+        required: false
+        type: boolean
+        default: true
+      run-python:
+        required: false
+        type: boolean
+        default: true
+      run-go:
+        required: false
+        type: boolean
+        default: true
+      run-rust:
+        required: false
+        type: boolean
+        default: true
+      run-dotnet:
+        required: false
+        type: boolean
+        default: true
+      os:
+        description: JSON array of runner images for all language workflows.
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      node-versions:
+        description: JSON array forwarded to reusable-node-ci.yml.
+        required: false
+        type: string
+        default: '["22"]'
+      python-versions:
+        description: JSON array forwarded to reusable-python-ci.yml.
+        required: false
+        type: string
+        default: '["3.12"]'
+      go-versions:
+        description: JSON array forwarded to reusable-go-ci.yml.
+        required: false
+        type: string
+        default: '["1.24"]'
+      rust-toolchains:
+        description: JSON array forwarded to reusable-rust-ci.yml.
+        required: false
+        type: string
+        default: '["stable"]'
+      dotnet-versions:
+        description: JSON array forwarded to reusable-dotnet-ci.yml.
+        required: false
+        type: string
+        default: '["9.0.x"]'
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect changed stacks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      common: ${{ steps.common.outputs.any_changed }}
+      node: ${{ steps.node.outputs.any_changed }}
+      python: ${{ steps.python.outputs.any_changed }}
+      go: ${{ steps.go.outputs.any_changed }}
+      rust: ${{ steps.rust.outputs.any_changed }}
+      dotnet: ${{ steps.dotnet.outputs.any_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Detect common changes
+        id: common
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.common-paths }}
+      - name: Detect Node changes
+        id: node
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.node-paths }}
+      - name: Detect Python changes
+        id: python
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.python-paths }}
+      - name: Detect Go changes
+        id: go
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.go-paths }}
+      - name: Detect Rust changes
+        id: rust
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.rust-paths }}
+      - name: Detect .NET changes
+        id: dotnet
+        uses: tj-actions/changed-files@24d32ffd492484c1d75e0c0b894501ddb9d30d62 # v47.0.0
+        with:
+          files: ${{ inputs.dotnet-paths }}
+
+  node:
+    name: Node lane
+    needs: detect
+    if: inputs.run-node && (needs.detect.outputs.common == 'true' || needs.detect.outputs.node == 'true')
+    uses: ./.github/workflows/reusable-node-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      node-versions: ${{ inputs.node-versions }}
+
+  python:
+    name: Python lane
+    needs: detect
+    if: inputs.run-python && (needs.detect.outputs.common == 'true' || needs.detect.outputs.python == 'true')
+    uses: ./.github/workflows/reusable-python-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      python-versions: ${{ inputs.python-versions }}
+
+  go:
+    name: Go lane
+    needs: detect
+    if: inputs.run-go && (needs.detect.outputs.common == 'true' || needs.detect.outputs.go == 'true')
+    uses: ./.github/workflows/reusable-go-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      go-versions: ${{ inputs.go-versions }}
+
+  rust:
+    name: Rust lane
+    needs: detect
+    if: inputs.run-rust && (needs.detect.outputs.common == 'true' || needs.detect.outputs.rust == 'true')
+    uses: ./.github/workflows/reusable-rust-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      toolchains: ${{ inputs.rust-toolchains }}
+
+  dotnet:
+    name: .NET lane
+    needs: detect
+    if: inputs.run-dotnet && (needs.detect.outputs.common == 'true' || needs.detect.outputs.dotnet == 'true')
+    uses: ./.github/workflows/reusable-dotnet-ci.yml
+    permissions:
+      contents: read
+    with:
+      os: ${{ inputs.os }}
+      dotnet-versions: ${{ inputs.dotnet-versions }}

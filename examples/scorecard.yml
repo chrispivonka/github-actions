@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   scorecard:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-scorecard.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-scorecard.yml@v1
     permissions:
       security-events: write
       id-token: write

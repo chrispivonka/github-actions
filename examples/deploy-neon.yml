@@ -1,0 +1,39 @@
+# Example caller for reusable-deploy-neon.yml.
+# Copy into your repo as .github/workflows/deploy-neon.yml.
+#
+# Assumes:
+# - NEON_DATABASE_URL_PREVIEW and NEON_DATABASE_URL_LIVE are Actions secrets
+# - GitHub Environments named "preview" and "live" exist (configure protection
+#   rules on "live" before adopting in production)
+
+name: Deploy (Neon)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-neon-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: chrispivonka/github-actions/.github/workflows/reusable-deploy-neon.yml@v1
+    permissions:
+      contents: read
+    with:
+      environment: ${{ github.event_name == 'pull_request' && 'preview' || 'live' }}
+      migrations-path: db/migrations
+      migration-glob: "*.sql"
+      postgres-client-package: postgresql-client-16
+      run-smoke-test: true
+      smoke-query: "SELECT 1;"
+      rollback-command: echo "Add your Neon rollback command here."
+    secrets:
+      neon-database-url-preview: ${{ secrets.NEON_DATABASE_URL_PREVIEW }}
+      neon-database-url-live: ${{ secrets.NEON_DATABASE_URL_LIVE }}

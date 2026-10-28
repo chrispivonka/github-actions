@@ -1,0 +1,79 @@
+# Copyright 2026 Chris Pivonka
+# SPDX-License-Identifier: Apache-2.0
+#
+# Repository-level release automation for this reusable-workflow library:
+# - release-please opens/updates a release PR from conventional commits.
+# - on merge, release-please creates a version tag and GitHub Release.
+# - this workflow then updates the moving major channel tag (e.g. v1) to the new
+#   release commit so consumers pinned to @v1 get backward-compatible updates.
+#
+# Required branch protection:
+# - release PRs should merge only after self-check passes.
+# - tag updates must be allowed for the Actions token.
+
+name: Release library
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-library
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    uses: ./.github/workflows/reusable-release-please.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      release-type: simple
+      config-file: release-please-config.json
+      manifest-file: .release-please-manifest.json
+
+  update-major-tag:
+    name: Update moving major tag
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Move major tag to new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag-name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if ! echo "$RELEASE_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::Unable to derive a major tag from release tag '$RELEASE_TAG'. Expected SemVer tag like v1.2.3."
+            exit 1
+          fi
+          major_tag="$(echo "$RELEASE_TAG" | sed -E 's/^(v[0-9]+)\..*/\1/')"
+
+          object_type="$(gh api "repos/$REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.type')"
+          object_sha="$(gh api "repos/$REPO/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')"
+          if [ "$object_type" = "tag" ]; then
+            commit_sha="$(gh api "repos/$REPO/git/tags/$object_sha" --jq '.object.sha')"
+          else
+            commit_sha="$object_sha"
+          fi
+
+          if gh api "repos/$REPO/git/ref/tags/$major_tag" >/dev/null 2>&1; then
+            gh api --method PATCH "repos/$REPO/git/refs/tags/$major_tag" \
+              -f sha="$commit_sha" \
+              -F force=true >/dev/null
+            echo "Moved existing $major_tag to $commit_sha"
+          else
+            gh api --method POST "repos/$REPO/git/refs" \
+              -f ref="refs/tags/$major_tag" \
+              -f sha="$commit_sha" >/dev/null
+            echo "Created new $major_tag at $commit_sha"
+          fi

@@ -104,10 +104,11 @@ per-repo table and a "core vs. supplementary" distillation.
   auto-merge stops waiting on real results. Re-verify with
   `gh api repos/chrispivonka/github-actions/branches/main/protection` after any
   such rename.
-- **`examples/*.yml` reference `chrispivonka/github-actions/.github/workflows/...@main`.**
-  If this repo is ever forked/renamed, or once it starts cutting tagged releases,
-  update the `uses:` refs in every example (and in this file) to match — `@main`
-  is a placeholder for "not yet versioned," not a permanent choice.
+- **`examples/*.yml` reference `chrispivonka/github-actions/.github/workflows/...@v1`.**
+  The `v1` tag is a moving major channel for backward-compatible updates. Keep
+  examples on `@v1` by default; use immutable `@v1.x.y` tags or commit SHAs when
+  documenting strict reproducibility. If the repo is forked/renamed, update these
+  `uses:` refs (and this file) to match.
 - **The GitHub Pages docs site is deployed by its own workflow** (see
   `.github/workflows/` for the pages-deploy workflow) — changes to `docs/site/`
   don't show up on chrispivonka.github.io until that workflow runs on push to

@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   dependency-review:
-    uses: chrispivonka/github-actions/.github/workflows/reusable-dependency-review.yml@main
+    uses: chrispivonka/github-actions/.github/workflows/reusable-dependency-review.yml@v1
     permissions:
       contents: read
       pull-requests: write
